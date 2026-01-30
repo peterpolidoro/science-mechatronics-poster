@@ -1,0 +1,50 @@
+#+title: Poster pipeline
+#+options: toc:2 num:nil
+
+* Files
+- =manifest.json= : edit this to add assets, text, image planes, and configure camera/render.
+- =blendlib.py= : “scene compiler” called by =open.py= and =render.py=.
+- =open.py= : entrypoint used when launching Blender UI.
+- =render.py= : entrypoint used for headless rendering.
+
+* Object kinds supported (initial)
+** text
+Creates/updates a 3D text object.
+
+Minimal fields:
+- =name=
+- =kind= "text"
+- =space= "POSTER" or "WORLD"
+- =text=
+- =style= (optional; refers to =styles=)
+
+** image_plane
+Creates a plane with a PNG texture (useful for logos, micrographs, schematics).
+
+Minimal fields:
+- =name=
+- =kind= "image_plane"
+- =space= "POSTER" or "WORLD"
+- =image_path=
+- =size_mm= [width, height]
+
+** import_glb
+Imports a GLB file and wraps it under a stable Empty root with your chosen name.
+
+Minimal fields:
+- =name=
+- =kind= "import_glb"
+- =filepath=
+
+** import_wrl
+Imports a WRL file (requires VRML importer extension) and wraps it similarly.
+Prefer converting WRL -> GLB and using =import_glb= for the poster build.
+
+Optional field:
+- =import_scale= : multiplier applied right after import (useful for normalizing WRL units)
+
+* Notes
+This is a starter pipeline. We will likely add:
+- CAD-style arrows/callouts
+- “explosion” controls (drivers) for grouped models
+- compositing so overlays always render above the 3D model

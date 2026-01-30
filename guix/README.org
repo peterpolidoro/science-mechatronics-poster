@@ -1,0 +1,28 @@
+#+title: Guix workflow for auxiliary tools
+#+options: toc:1 num:nil
+
+This repo assumes *Blender 5* is installed locally outside of Guix.
+
+GNU Guix is used for other tools commonly needed in a mechatronics/science poster workflow:
+- FreeCAD (CAD edits / exporting meshes)
+- KiCad (schematics/boards/screenshots)
+- GIMP (raster edits / quick touch-ups)
+
+* Enter a Guix shell
+From the repository root:
+
+#+begin_src sh
+guix shell -m guix/manifest.scm
+#+end_src
+
+* Run a specific app via Guix
+#+begin_src sh
+guix shell -m guix/manifest.scm -- freecad
+guix shell -m guix/manifest.scm -- kicad
+guix shell -m guix/manifest.scm -- gimp
+#+end_src
+
+The top-level Makefile also provides:
+- =make freecad=
+- =make kicad=
+- =make gimp=

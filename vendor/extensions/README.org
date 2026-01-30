@@ -1,0 +1,9 @@
+#+title: Vendored Blender extensions
+#+options: toc:1 num:nil
+
+Optional: place Blender 5 extension zip files here if you want a fully offline/reproducible setup.
+
+Example use-case:
+- Web3D X3D/VRML2 importer extension (to import =.wrl= / =.x3d= assets)
+
+If you vendor an extension zip here, you can add a Makefile target later to install it into the project-local extension directory.

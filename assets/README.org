@@ -1,0 +1,25 @@
+#+title: Assets layout
+#+options: toc:1 num:nil
+
+This directory is intentionally structured so assets can be versioned cleanly and referenced from =poster/manifest.json=.
+
+* Recommended practice
+- Put *raw/source* assets in =assets/src/= (unmodified exports from upstream tools).
+- Put *normalized/runtime* assets in =assets/compiled/= (what the Blender poster build actually imports).
+- Keep licenses/attribution files alongside assets (see =assets/licenses/=).
+
+* Directories
+- =assets/src/wrl/= : original VRML2 files (=.wrl=) if you have them.
+- =assets/src/glb/= : upstream glTF/GLB files (unmodified).
+- =assets/compiled/glb/= : normalized GLB files (recommended input for the poster build).
+- =assets/images/= : raster figures, micrographs, logos (=.png= recommended).
+- =assets/textures/= : texture maps used by GLB or Blender materials.
+- =assets/fonts/= : fonts used by Blender text objects (=.ttf= or =.otf=).
+- =assets/references/= : design references, screenshots, rough sketches.
+- =assets/licenses/= : license texts and attribution notes for third-party assets.
+
+* Git note
+Many assets will be large binary files. Consider using Git LFS for:
+- =*.glb=
+- high-resolution =*.png=
+- any =*.blend= you decide to track

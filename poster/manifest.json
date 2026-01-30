@@ -1,0 +1,126 @@
+{
+  "units": {
+    "system": "METRIC",
+    "length_unit": "MILLIMETERS",
+    "scale_length": 0.001
+  },
+  "poster": {
+    "size_mm": 1219.2,
+    "safe_margin_mm": 25.4,
+    "ppi": 150
+  },
+  "render": {
+    "engine_preference": [
+      "BLENDER_EEVEE_NEXT",
+      "BLENDER_EEVEE",
+      "CYCLES"
+    ],
+    "view_transform": "Standard",
+    "film_transparent": false,
+    "color_mode": "RGBA",
+    "color_depth": "16",
+    "file_format": "PNG"
+  },
+  "camera": {
+    "name": "CAM_Poster",
+    "lens_mm": 85.0,
+    "sensor_width_mm": 36.0,
+    "location_mm": [
+      0.0,
+      -3500.0,
+      1500.0
+    ],
+    "target_mm": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "clip_start_mm": 10.0,
+    "clip_end_mm": 200000.0
+  },
+  "lights": {
+    "enabled": true,
+    "rig": "three_area",
+    "key": {
+      "location_mm": [
+        2000,
+        -1500,
+        3000
+      ],
+      "energy": 2500,
+      "size_mm": 2500
+    },
+    "fill": {
+      "location_mm": [
+        -2500,
+        -2500,
+        2000
+      ],
+      "energy": 1200,
+      "size_mm": 3500
+    },
+    "rim": {
+      "location_mm": [
+        0,
+        2500,
+        2500
+      ],
+      "energy": 1800,
+      "size_mm": 3000
+    }
+  },
+  "styles": {
+    "title": {
+      "font": "assets/fonts/Inter-Regular.ttf",
+      "size_mm": 56.0,
+      "extrude_mm": 2.0,
+      "color_rgba": [
+        0.05,
+        0.05,
+        0.05,
+        1.0
+      ]
+    },
+    "label": {
+      "font": "assets/fonts/Inter-Regular.ttf",
+      "size_mm": 18.0,
+      "extrude_mm": 0.8,
+      "color_rgba": [
+        0.12,
+        0.12,
+        0.12,
+        1.0
+      ]
+    }
+  },
+  "objects": [
+    {
+      "name": "TXT_Title",
+      "kind": "text",
+      "collection": "OVERLAY",
+      "space": "POSTER",
+      "poster_xy_mm": [
+        0.0,
+        520.0
+      ],
+      "z_mm": 2.0,
+      "text": "Science Mechatronics Poster",
+      "style": "title",
+      "align_x": "CENTER"
+    },
+    {
+      "name": "TXT_Subtitle",
+      "kind": "text",
+      "collection": "OVERLAY",
+      "space": "POSTER",
+      "poster_xy_mm": [
+        0.0,
+        455.0
+      ],
+      "z_mm": 2.0,
+      "text": "Exploded CAD-style assembly in Blender",
+      "style": "label",
+      "align_x": "CENTER"
+    }
+  ]
+}

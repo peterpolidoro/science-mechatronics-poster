@@ -1,0 +1,15 @@
+#+title: Project-local Blender directories
+#+options: toc:1 num:nil
+
+This directory is used for *project-local* Blender state so builds are more reproducible and don’t depend on your global Blender profile.
+
+The Makefile sets these environment variables:
+- =BLENDER_USER_CONFIG= -> =.blender/user_config/=
+- =BLENDER_USER_SCRIPTS= -> =.blender/user_scripts/=
+- =BLENDER_USER_EXTENSIONS= -> =.blender/user_extensions/=
+
+These subdirectories are ignored by git (see =.gitignore=).
+
+You normally should not commit anything under this folder.
+If you decide to vendor a Blender extension, put the extension zip under:
+- =vendor/extensions/=

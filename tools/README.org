@@ -1,0 +1,17 @@
+#+title: Tools
+#+options: toc:1 num:nil
+
+This directory contains helper scripts for managing assets and sanity checks.
+
+* convert_wrl_to_glb.py
+Batch converts =.wrl= files to =.glb=.
+
+Run via Makefile:
+#+begin_src sh
+make convert-wrl
+#+end_src
+
+Or directly:
+#+begin_src sh
+blender -b --factory-startup -P tools/convert_wrl_to_glb.py -- assets/src/wrl assets/compiled/glb 0.001
+#+end_src

@@ -1,0 +1,27 @@
+# Blender temp / backup
+*.blend1
+*.blend2
+*.blend3
+*.blend@
+*.tmp
+*.bak
+*~
+
+# Output renders / exports
+/out/*
+!/out/.gitkeep
+
+# Project-local Blender state (kept out of git; created by Makefile)
+/.blender/user_config/
+/.blender/user_scripts/
+/.blender/user_extensions/
+/.blender/ext_repo/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/

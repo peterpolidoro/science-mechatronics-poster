@@ -1,0 +1,108 @@
+#+title: science-mechatronics-poster
+#+options: toc:2 num:nil
+
+* Overview
+This repository contains a *reproducible Blender 5 pipeline* for generating a 48×48 inch (1219.2×1219.2 mm) symposium poster that looks like an *exploded CAD model* rather than a traditional scientific poster.
+
+The poster is built as a Blender scene assembled from:
+- 3D assets (primarily =.glb=; optionally =.wrl= as source assets)
+- 2D images (=.png=) projected onto planes (for micrographs, schematics, labels, logos)
+- 3D text and 3D arrows/callouts
+- a *perspective* camera (CAD-like lens, longer focal length)
+
+The core idea is **scene-as-code**:
+- =poster/manifest.json= is the declarative source of truth (units, camera, poster size, objects).
+- =poster/blendlib.py= “compiles” the manifest into a Blender scene deterministically.
+- =Makefile= provides stable commands to open Blender and render images reproducibly.
+
+* Key concepts
+** Units
+- The Blender scene is configured so **1 Blender unit = 1 mm** (Metric, Unit Scale = 0.001).
+- The poster is **1219.2 mm square** (48 in × 25.4 mm/in).
+
+** Two coordinate spaces
+- *WORLD space (mm):* for the exploded 3D assembly.
+- *POSTER space (mm):* for text/figures/callouts that must match printed size.
+  POSTER space is implemented as a *camera-attached reference plane* that fills the render frame.
+
+* Quick start
+** Prerequisites
+- Blender 5 installed locally (available as =blender= on your PATH, or set =BLENDER=/path/to/blender=)
+- GNU Make
+- (Optional) GNU Guix for auxiliary tools (FreeCAD, KiCad, GIMP)
+
+** Open Blender with the poster scene applied
+#+begin_src sh
+make open
+# or:
+BLENDER=/path/to/blender make open
+#+end_src
+
+** Render preview and final outputs
+#+begin_src sh
+make render-preview
+make render-final
+#+end_src
+
+Render outputs go to =out/=.
+
+* Repository layout
+#+begin_example
+.
+├── README.org
+├── Makefile
+├── poster/
+│   ├── manifest.json          # declarative scene description (edit this!)
+│   ├── open.py                # applies manifest when launching Blender UI
+│   ├── render.py              # headless render entrypoint
+│   └── blendlib.py            # shared implementation ("scene compiler")
+├── assets/
+│   ├── src/
+│   │   ├── wrl/               # raw VRML (.wrl) source assets (optional)
+│   │   └── glb/               # raw .glb from upstream sources
+│   ├── compiled/
+│   │   └── glb/               # *normalized* .glb produced by tools/ (recommended)
+│   ├── images/                # .png figures, logos, micrographs
+│   ├── textures/              # texture maps (png/jpg/exr)
+│   ├── fonts/                 # .ttf/.otf fonts used by Blender text
+│   ├── references/            # screenshots, design refs, notes
+│   └── licenses/              # asset licenses and attribution
+├── tools/
+│   └── convert_wrl_to_glb.py  # optional batch converter (requires VRML importer)
+├── vendor/
+│   └── extensions/            # vendored Blender extensions (optional)
+├── guix/
+│   ├── manifest.scm           # packages for FreeCAD/KiCad/GIMP etc.
+│   └── README.org
+├── out/                       # renders and temporary exports (ignored by default)
+└── .blender/                  # project-local Blender config dirs (not committed)
+#+end_example
+
+* Assets workflow (recommended)
+** GLB is the “compiled” runtime format
+Blender builds are most reproducible when the poster pipeline imports *only* GLB + PNG.
+
+If you have VRML (=.wrl=) assets:
+1. Keep them in =assets/src/wrl/=
+2. Convert them to normalized GLB in =assets/compiled/glb/= (one-time or scripted)
+
+** Notes about VRML (.wrl)
+Blender 5 can import =.wrl= via the “Web3D X3D/VRML2” extension. If you want the poster build to be independent of that extension, convert VRML → GLB and use the GLB in the manifest.
+
+* Reproducibility notes
+The Makefile sets these environment variables so Blender uses *project-local* state instead of your global Blender profile:
+- =BLENDER_USER_CONFIG=
+- =BLENDER_USER_SCRIPTS=
+- =BLENDER_USER_EXTENSIONS=
+
+The headless render targets use =--factory-startup= to reduce “works on my machine” issues.
+
+* Using Guix for non-Blender tools
+See =guix/README.org=.
+
+* Typical next steps
+1. Put a test GLB into =assets/compiled/glb/= (or PNG into =assets/images/=).
+2. Add an object entry in =poster/manifest.json=.
+3. Run =make open= to iterate interactively.
+4. Use =make render-preview= frequently; use =make render-final= when ready for print.
+
