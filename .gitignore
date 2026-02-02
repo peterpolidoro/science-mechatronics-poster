@@ -12,10 +12,10 @@
 !/out/.gitkeep
 
 # Project-local Blender state (kept out of git; created by Makefile)
-/.blender/user_config/
-/.blender/user_scripts/
-/.blender/user_extensions/
-/.blender/ext_repo/
+# /.blender/user_config/
+# /.blender/user_scripts/
+# /.blender/user_extensions/
+# /.blender/ext_repo/
 
 # Python
 __pycache__/
