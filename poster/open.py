@@ -24,7 +24,7 @@ def main():
 
     apply_manifest(manifest_path)
     print(f"[open.py] Applied manifest: {manifest_path}")
-    print("[open.py] You can now edit the scene interactively. Re-run 'make open' to re-apply manifest changes.")
+    print("[open.py] Tip: press HOME to frame all, and NUMPAD-0 for camera view.")
 
 
 if __name__ == "__main__":

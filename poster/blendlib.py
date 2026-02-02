@@ -7,6 +7,10 @@ Design goals:
 - Deterministic object naming (objects addressed by name)
 - mm-based workflow (1 Blender unit = 1 mm)
 - Perspective camera + camera-attached poster plane for mm-accurate overlays
+
+Updates (Feb 2026):
+- Remove Blender startup Cube/Camera/Light by default (configurable)
+- Preserve glTF hierarchy on import (prevents parts shifting)
 """
 
 from __future__ import annotations
@@ -30,12 +34,31 @@ def load_manifest(path: str | Path) -> Dict[str, Any]:
     with p.open("r", encoding="utf-8") as f:
         return json.load(f)
 
+
 def abspath_from_manifest(manifest_path: str | Path, maybe_rel: str | Path) -> str:
+    """Resolve paths referenced by the manifest.
+
+    Primary behavior: resolve relative paths against the directory containing the manifest.
+
+    Compatibility fallback: if that doesn't exist, also try resolving against the repo root
+    (one directory above the manifest directory). This allows manifests to use paths like
+    "assets/..." even though manifest.json lives in "poster/".
+    """
     mp = Path(manifest_path).resolve()
     p = Path(maybe_rel)
+
     if p.is_absolute():
         return str(p)
-    return str((mp.parent / p).resolve())
+
+    # First try: relative to manifest directory
+    cand1 = (mp.parent / p).resolve()
+    if cand1.exists():
+        return str(cand1)
+
+    # Fallback: relative to repo root (parent of manifest dir)
+    cand2 = (mp.parent.parent / p).resolve()
+    return str(cand2)
+
 
 def ensure_collection(name: str) -> bpy.types.Collection:
     scene = bpy.context.scene
@@ -44,7 +67,6 @@ def ensure_collection(name: str) -> bpy.types.Collection:
         col = bpy.data.collections.new(name)
 
     # Ensure the collection is linked to the active scene.
-    # Use `.get()` because bpy_prop_collections are name-addressable.
     if scene.collection.children.get(col.name) is None:
         try:
             scene.collection.children.link(col)
@@ -52,6 +74,7 @@ def ensure_collection(name: str) -> bpy.types.Collection:
             # Already linked somewhere else in the scene graph.
             pass
     return col
+
 
 def ensure_child_collection(parent: bpy.types.Collection, name: str) -> bpy.types.Collection:
     col = bpy.data.collections.get(name)
@@ -64,6 +87,7 @@ def ensure_child_collection(parent: bpy.types.Collection, name: str) -> bpy.type
             pass
     return col
 
+
 def move_object_to_collection(obj: bpy.types.Object, col: bpy.types.Collection) -> None:
     for c in list(obj.users_collection):
         try:
@@ -72,6 +96,7 @@ def move_object_to_collection(obj: bpy.types.Object, col: bpy.types.Collection) 
             pass
     if col.objects.get(obj.name) is None:
         col.objects.link(obj)
+
 
 def remove_collection_objects(col: bpy.types.Collection) -> None:
     # Remove objects from the scene and datablocks
@@ -82,6 +107,27 @@ def remove_collection_objects(col: bpy.types.Collection) -> None:
         except Exception:
             pass
 
+
+def remove_startup_objects(names: Sequence[str] = ("Cube", "Camera", "Light")) -> None:
+    """Remove Blender's default startup objects.
+
+    Blender's default "General" startup scene contains Cube, Camera, and Light.
+    In a declarative pipeline this is usually unwanted clutter, so we remove them
+    by name unless disabled in the manifest.
+
+    Disable by adding:
+      "scene": { "remove_startup_objects": false }
+    """
+    for n in names:
+        obj = bpy.data.objects.get(n)
+        if obj is None:
+            continue
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception:
+            pass
+
+
 def ensure_empty(name: str, location_mm: Sequence[float] = (0.0, 0.0, 0.0)) -> bpy.types.Object:
     obj = bpy.data.objects.get(name)
     if obj is None:
@@ -91,6 +137,7 @@ def ensure_empty(name: str, location_mm: Sequence[float] = (0.0, 0.0, 0.0)) -> b
     obj.location = Vector(location_mm)
     return obj
 
+
 def ensure_camera(name: str) -> bpy.types.Object:
     obj = bpy.data.objects.get(name)
     if obj is None:
@@ -99,13 +146,17 @@ def ensure_camera(name: str) -> bpy.types.Object:
         bpy.context.scene.collection.objects.link(obj)
     return obj
 
-def set_world_transform(obj: bpy.types.Object,
-                        location_mm: Sequence[float],
-                        rotation_deg: Sequence[float],
-                        scale_xyz: Sequence[float]) -> None:
+
+def set_world_transform(
+    obj: bpy.types.Object,
+    location_mm: Sequence[float],
+    rotation_deg: Sequence[float],
+    scale_xyz: Sequence[float],
+) -> None:
     obj.location = Vector(location_mm)
     obj.rotation_euler = Euler([math.radians(v) for v in rotation_deg], 'XYZ')
     obj.scale = Vector(scale_xyz)
+
 
 def ensure_plane_mesh(mesh_name: str) -> bpy.types.Mesh:
     # 1x1 plane centered at origin, lying on XY
@@ -118,6 +169,7 @@ def ensure_plane_mesh(mesh_name: str) -> bpy.types.Mesh:
         mesh.update()
     return mesh
 
+
 def ensure_material_solid(name: str, rgba: Sequence[float]) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
     if mat is None:
@@ -129,6 +181,7 @@ def ensure_material_solid(name: str, rgba: Sequence[float]) -> bpy.types.Materia
         bsdf.inputs["Base Color"].default_value = (rgba[0], rgba[1], rgba[2], rgba[3])
         bsdf.inputs["Roughness"].default_value = 0.55
     return mat
+
 
 def ensure_material_image(name: str, image_path: str) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
@@ -178,11 +231,14 @@ def poster_plane_distance_mm(poster_size_mm: float, lens_mm: float, sensor_width
     # width = d * sensor_width / lens  =>  d = width * lens / sensor_width
     return poster_size_mm * lens_mm / sensor_width_mm
 
-def place_on_poster_plane(obj: bpy.types.Object,
-                          cam_obj: bpy.types.Object,
-                          plane_distance_mm: float,
-                          poster_xy_mm: Sequence[float],
-                          z_mm: float) -> None:
+
+def place_on_poster_plane(
+    obj: bpy.types.Object,
+    cam_obj: bpy.types.Object,
+    plane_distance_mm: float,
+    poster_xy_mm: Sequence[float],
+    z_mm: float,
+) -> None:
     # Parent to camera so it remains parallel to the camera sensor.
     obj.parent = cam_obj
     obj.matrix_parent_inverse = cam_obj.matrix_world.inverted()
@@ -206,9 +262,8 @@ def apply_units(cfg: Dict[str, Any]) -> None:
     scene.unit_settings.length_unit = u.get("length_unit", "MILLIMETERS")
     scene.unit_settings.scale_length = float(u.get("scale_length", 0.001))  # 1 BU = 1 mm
 
-def apply_render_settings(cfg: Dict[str, Any],
-                          poster_in: float,
-                          ppi_override: Optional[float] = None) -> None:
+
+def apply_render_settings(cfg: Dict[str, Any], poster_in: float, ppi_override: Optional[float] = None) -> None:
     scene = bpy.context.scene
 
     r = cfg.get("render", {})
@@ -238,6 +293,7 @@ def apply_render_settings(cfg: Dict[str, Any],
     scene.render.resolution_x = res
     scene.render.resolution_y = res
     scene.render.resolution_percentage = 100
+
 
 def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, float]:
     scene = bpy.context.scene
@@ -312,6 +368,7 @@ def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, flo
 
     return cam, d_mm
 
+
 def apply_light_rig(cfg: Dict[str, Any]) -> None:
     lights_cfg = cfg.get("lights", {})
     if not lights_cfg.get("enabled", True):
@@ -345,11 +402,13 @@ def apply_light_rig(cfg: Dict[str, Any]) -> None:
 # Object builders
 # ----------------------------
 
-def ensure_text_object(obj_cfg: Dict[str, Any],
-                       manifest_path: str | Path,
-                       styles: Dict[str, Any],
-                       cam_obj: bpy.types.Object,
-                       poster_plane_distance: float) -> bpy.types.Object:
+def ensure_text_object(
+    obj_cfg: Dict[str, Any],
+    manifest_path: str | Path,
+    styles: Dict[str, Any],
+    cam_obj: bpy.types.Object,
+    poster_plane_distance: float,
+) -> bpy.types.Object:
     name = obj_cfg["name"]
 
     # Curve datablock
@@ -417,10 +476,13 @@ def ensure_text_object(obj_cfg: Dict[str, Any],
 
     return obj
 
-def ensure_image_plane(obj_cfg: Dict[str, Any],
-                       manifest_path: str | Path,
-                       cam_obj: bpy.types.Object,
-                       poster_plane_distance: float) -> bpy.types.Object:
+
+def ensure_image_plane(
+    obj_cfg: Dict[str, Any],
+    manifest_path: str | Path,
+    cam_obj: bpy.types.Object,
+    poster_plane_distance: float,
+) -> bpy.types.Object:
     name = obj_cfg["name"]
     obj = bpy.data.objects.get(name)
     if obj is None:
@@ -456,9 +518,6 @@ def ensure_image_plane(obj_cfg: Dict[str, Any],
 
     return obj
 
-def _set_active_object(obj: bpy.types.Object) -> None:
-    bpy.context.view_layer.objects.active = obj
-    obj.select_set(True)
 
 def _import_objects_and_get_new(import_op) -> List[bpy.types.Object]:
     before = {o.name for o in bpy.data.objects}
@@ -467,16 +526,19 @@ def _import_objects_and_get_new(import_op) -> List[bpy.types.Object]:
     new_names = list(after - before)
     return [bpy.data.objects[n] for n in new_names if n in bpy.data.objects]
 
-def ensure_imported_asset(obj_cfg: Dict[str, Any],
-                          manifest_path: str | Path,
-                          importer: str) -> bpy.types.Object:
+
+def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, importer: str) -> bpy.types.Object:
     """Import a GLB/WRL and wrap it under a stable Empty root named obj_cfg['name'].
 
     Strategy:
     - Root object name is stable and used by other declarative items.
-    - Imported child objects live in a dedicated collection 'ASSET_<name>'.
+    - Imported objects live in a dedicated child collection 'ASSET_<name>'.
     - On each apply, the asset collection is cleared and the file is re-imported.
-      (This keeps the result deterministic while allowing upstream asset changes.)
+
+    Important detail for glTF:
+    - glTF imports often contain internal parent/child hierarchies (empties that carry transforms).
+    - Parenting *every* imported object to a new root breaks this hierarchy and causes parts to shift.
+    - We preserve the internal hierarchy and only parent top-level imported nodes under the stable root.
     """
     name = obj_cfg["name"]
     parent_collection_name = obj_cfg.get("collection", "WORLD")
@@ -491,11 +553,14 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any],
         bpy.context.scene.collection.objects.link(root)
     move_object_to_collection(root, parent_col)
 
-    # Temporarily reset root transform so parenting doesn't surprise us
+    # Desired final transform
     desired_loc = obj_cfg.get("location_mm", [0.0, 0.0, 0.0])
     desired_rot = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
     desired_scale = obj_cfg.get("scale", [1.0, 1.0, 1.0])
+    import_scale = float(obj_cfg.get("import_scale", 1.0))
 
+    # Make root identity during import/parenting
+    root.parent = None
     root.location = Vector((0.0, 0.0, 0.0))
     root.rotation_euler = Euler((0.0, 0.0, 0.0), 'XYZ')
     root.scale = Vector((1.0, 1.0, 1.0))
@@ -522,23 +587,38 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any],
     except Exception as e:
         raise RuntimeError(f"Import failed for {filepath}: {e}")
 
-    # Optional post-import scale factor (useful for WRL unit normalization)
-    import_scale = float(obj_cfg.get("import_scale", 1.0))
-    if import_scale != 1.0:
-        for o in new_objs:
-            o.scale *= import_scale
-
-    # Move into our asset collection and parent under root
+    # Move imported objects into our asset collection (do NOT break hierarchy)
     for o in new_objs:
-        # Avoid parenting cameras/lights accidentally if an importer produces them
         if o.type in {"CAMERA", "LIGHT"}:
             continue
         move_object_to_collection(o, asset_col)
+
+    # Parent only the *top-level* imported objects to root, preserving transforms.
+    # We detect "top-level" as: parent is None OR parent was not part of this import.
+    new_ptrs = {o.as_pointer() for o in new_objs}
+    top_level: List[bpy.types.Object] = []
+    for o in new_objs:
+        if o.type in {"CAMERA", "LIGHT"}:
+            continue
+        if o.parent is None:
+            top_level.append(o)
+            continue
+        try:
+            if o.parent.as_pointer() not in new_ptrs:
+                top_level.append(o)
+        except Exception:
+            # Defensive fallback
+            top_level.append(o)
+
+    for o in top_level:
+        mw = o.matrix_world.copy()
         o.parent = root
         o.matrix_parent_inverse = root.matrix_world.inverted()
+        o.matrix_world = mw
 
-    # Apply desired transform to root
-    set_world_transform(root, desired_loc, desired_rot, desired_scale)
+    # Apply desired transform to root (include import_scale at root)
+    combined_scale = (Vector(desired_scale) * import_scale)
+    set_world_transform(root, desired_loc, desired_rot, combined_scale)
     return root
 
 
@@ -546,10 +626,12 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any],
 # Main entrypoint
 # ----------------------------
 
-def apply_manifest(manifest_path: str | Path,
-                   *,
-                   ppi_override: Optional[float] = None) -> Dict[str, Any]:
+def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] = None) -> Dict[str, Any]:
     cfg = load_manifest(manifest_path)
+
+    # Remove Blender's default startup objects unless disabled
+    if bool(cfg.get("scene", {}).get("remove_startup_objects", True)):
+        remove_startup_objects()
 
     # Top-level collections
     ensure_collection("WORLD")

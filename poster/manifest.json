@@ -121,6 +121,18 @@
       "text": "Exploded CAD-style assembly in Blender",
       "style": "label",
       "align_x": "CENTER"
+    },
+    {
+      "name": "GLB_TestPart",
+      "kind": "import_glb",
+      "collection": "WORLD",
+      "filepath": "../assets/compiled/glb/joystick.glb",
+
+      "location_mm": [0, 0, 0],
+      "rotation_deg": [0, 0, 0],
+      "scale": [1, 1, 1],
+
+      "import_scale": 1.0
     }
   ]
 }
