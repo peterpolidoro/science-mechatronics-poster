@@ -1,4 +1,7 @@
 {
+  "scene": {
+    "remove_startup_objects": true
+  },
   "units": {
     "system": "METRIC",
     "length_unit": "MILLIMETERS",
@@ -6,20 +9,49 @@
   },
   "poster": {
     "size_mm": 1219.2,
-    "safe_margin_mm": 25.4,
-    "ppi": 150
+    "ppi": 150,
+    "safe_margin_mm": 25.4
   },
   "render": {
     "engine_preference": [
+      "CYCLES",
       "BLENDER_EEVEE_NEXT",
-      "BLENDER_EEVEE",
-      "CYCLES"
+      "BLENDER_EEVEE"
     ],
     "view_transform": "Standard",
+    "look": "None",
+    "exposure": 0.0,
+    "gamma": 1.0,
     "film_transparent": false,
     "color_mode": "RGBA",
     "color_depth": "16",
     "file_format": "PNG"
+  },
+  "cycles": {
+    "samples": 256,
+    "preview_samples": 64,
+    "use_adaptive_sampling": true,
+    "adaptive_threshold": 0.01,
+    "use_denoising": true,
+    "denoiser": "OPENIMAGEDENOISE",
+    "max_bounces": 8,
+    "diffuse_bounces": 4,
+    "glossy_bounces": 4,
+    "transmission_bounces": 6,
+    "transparent_max_bounces": 8,
+    "volume_bounces": 0,
+    "filter_glossy": 0.5,
+    "clamp_indirect": 10.0,
+    "use_caustics": false
+  },
+  "world": {
+    "background_color_rgba": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "strength": 1.0
   },
   "camera": {
     "name": "CAM_Poster",
@@ -27,8 +59,8 @@
     "sensor_width_mm": 36.0,
     "location_mm": [
       0.0,
-      -3500.0,
-      1500.0
+      -1750.0,
+      750.0
     ],
     "target_mm": [
       0.0,
@@ -43,95 +75,167 @@
     "rig": "three_area",
     "key": {
       "location_mm": [
-        2000,
-        -1500,
-        3000
+        1150,
+        -950,
+        1150
       ],
-      "energy": 2500,
-      "size_mm": 2500
+      "energy": 9000,
+      "size_xy_mm": [
+        900,
+        650
+      ],
+      "target_mm": [
+        0.0,
+        0.0,
+        -250.0
+      ],
+      "color_rgb": [
+        1.0,
+        0.98,
+        0.96
+      ]
     },
     "fill": {
       "location_mm": [
-        -2500,
-        -2500,
-        2000
+        -1650,
+        -900,
+        900
       ],
-      "energy": 1200,
-      "size_mm": 3500
+      "energy": 2600,
+      "size_xy_mm": [
+        2600,
+        1800
+      ],
+      "target_mm": [
+        0.0,
+        0.0,
+        -250.0
+      ],
+      "color_rgb": [
+        1.0,
+        1.0,
+        1.0
+      ]
     },
     "rim": {
       "location_mm": [
         0,
-        2500,
-        2500
+        1550,
+        1200
       ],
-      "energy": 1800,
-      "size_mm": 3000
-    }
-  },
-  "styles": {
-    "title": {
-      "font": "assets/fonts/Inter-Regular.ttf",
-      "size_mm": 56.0,
-      "extrude_mm": 2.0,
-      "color_rgba": [
-        0.05,
-        0.05,
-        0.05,
+      "energy": 5200,
+      "size_xy_mm": [
+        1300,
+        450
+      ],
+      "target_mm": [
+        0.0,
+        0.0,
+        -250.0
+      ],
+      "color_rgb": [
+        0.95,
+        0.98,
         1.0
       ]
     },
-    "label": {
-      "font": "assets/fonts/Inter-Regular.ttf",
-      "size_mm": 18.0,
-      "extrude_mm": 0.8,
-      "color_rgba": [
-        0.12,
-        0.12,
-        0.12,
-        1.0
-      ]
-    }
+    "extras": [
+      {
+        "name": "LIGHT_Top",
+        "enabled": true,
+        "type": "AREA",
+        "location_mm": [
+          0,
+          -150,
+          2250
+        ],
+        "energy": 1800,
+        "size_xy_mm": [
+          2400,
+          2400
+        ],
+        "target_mm": [
+          0.0,
+          0.0,
+          -250.0
+        ],
+        "color_rgb": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    ]
   },
   "objects": [
     {
-      "name": "TXT_Title",
-      "kind": "text",
-      "collection": "OVERLAY",
-      "space": "POSTER",
-      "poster_xy_mm": [
+      "name": "BACKDROP",
+      "kind": "backdrop",
+      "enabled": false,
+      "collection": "WORLD",
+      "location_mm": [
         0.0,
-        520.0
+        0.0,
+        -900.0
       ],
-      "z_mm": 2.0,
-      "text": "Science Mechatronics Poster",
-      "style": "title",
-      "align_x": "CENTER"
+      "rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "width_mm": 6000,
+      "floor_depth_mm": 4000,
+      "wall_height_mm": 3000,
+      "radius_mm": 600,
+      "segments": 24,
+      "material": {
+        "color_rgba": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "roughness": 0.95,
+        "specular": 0.0
+      }
     },
     {
-      "name": "TXT_Subtitle",
-      "kind": "text",
+      "name": "title",
+      "kind": "image_plane",
       "collection": "OVERLAY",
       "space": "POSTER",
+      "image_path": "../assets/images/title.png",
+      "size_mm": [
+        1215,
+        164.7
+      ],
       "poster_xy_mm": [
         0.0,
-        455.0
+        525.15
       ],
-      "z_mm": 2.0,
-      "text": "Exploded CAD-style assembly in Blender",
-      "style": "label",
-      "align_x": "CENTER"
+      "z_mm": 1.0,
+      "emission_strength": 1.0
     },
     {
       "name": "joystick",
       "kind": "import_glb",
       "collection": "WORLD",
       "filepath": "../assets/compiled/glb/joystick.glb",
-
-      "location_mm": [0, 0, 0],
-      "rotation_deg": [0, 0, -45],
-      "scale": [1, 1, 1],
-
+      "location_mm": [
+        0,
+        0,
+        -250
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        -45
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
       "import_scale": 1.0
     }
   ]
