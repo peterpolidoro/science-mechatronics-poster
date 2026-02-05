@@ -42,7 +42,11 @@
     "volume_bounces": 0,
     "filter_glossy": 0.5,
     "clamp_indirect": 10.0,
-    "use_caustics": false
+    "use_caustics": false,
+    "device": "GPU",
+    "compute_device_type": "HIP",
+    "use_all_gpus": true,
+    "use_cpu": false
   },
   "world": {
     "background_color_rgba": [

@@ -25,6 +25,47 @@ def parse_args():
     return p.parse_args(argv_after_dashes())
 
 
+def _print_cycles_device_info():
+    scene = bpy.context.scene
+    if scene.render.engine != "CYCLES":
+        print(f"[render.py] Render engine: {scene.render.engine} (not Cycles)")
+        return
+
+    try:
+        dev = getattr(scene.cycles, "device", None)
+        print(f"[render.py] Cycles scene.cycles.device = {dev}")
+    except Exception:
+        pass
+
+    # Print addon preferences device selection (useful when running with --factory-startup)
+    try:
+        addon = bpy.context.preferences.addons.get("cycles")
+        if addon is None:
+            print("[render.py] Cycles addon preferences not found.")
+            return
+        prefs = addon.preferences
+        compute = getattr(prefs, "compute_device_type", None)
+        print(f"[render.py] Cycles prefs.compute_device_type = {compute}")
+        try:
+            prefs.get_devices()
+        except Exception:
+            try:
+                prefs.refresh_devices()
+            except Exception:
+                pass
+
+        enabled = []
+        for d in getattr(prefs, "devices", []):
+            try:
+                if d.use:
+                    enabled.append(f"{d.type}:{d.name}")
+            except Exception:
+                pass
+        print(f"[render.py] Enabled Cycles devices: {enabled}")
+    except Exception as e:
+        print(f"[render.py] Could not read Cycles device prefs: {e!r}")
+
+
 def main():
     args = parse_args()
 
@@ -35,6 +76,8 @@ def main():
 
     scene = bpy.context.scene
     scene.render.filepath = str(out_path)
+
+    _print_cycles_device_info()
 
     # Render still
     bpy.ops.render.render(write_still=True)

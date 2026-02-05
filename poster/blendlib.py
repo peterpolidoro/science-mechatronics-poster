@@ -10,7 +10,11 @@ Highlights:
 - Stores imported-asset root empties in HELPERS (reduces WORLD clutter)
 - Blender 5 compatible transparency/material APIs
 - Adds Cycles render settings support via manifest["cycles"]
+- Adds Cycles GPU selection (HIP/CUDA/OPTIX/etc) via manifest["cycles"] (see configure_cycles_devices)
 - Respects per-object `"enabled": false` in the manifest
+
+NOTE:
+This file is designed to be used by poster/open.py and poster/render.py.
 """
 
 from __future__ import annotations
@@ -72,6 +76,7 @@ def ensure_collection(name: str) -> bpy.types.Collection:
         try:
             scene.collection.children.link(col)
         except RuntimeError:
+            # Already linked or invalid context
             pass
     return col
 
@@ -89,6 +94,7 @@ def ensure_child_collection(parent: bpy.types.Collection, name: str) -> bpy.type
 
 
 def move_object_to_collection(obj: bpy.types.Object, col: bpy.types.Collection) -> None:
+    """Unlink obj from all its current collections and link to col."""
     for c in list(obj.users_collection):
         try:
             c.objects.unlink(obj)
@@ -99,6 +105,7 @@ def move_object_to_collection(obj: bpy.types.Object, col: bpy.types.Collection) 
 
 
 def remove_collection_objects(col: bpy.types.Collection) -> None:
+    """Delete all objects directly in this collection."""
     for obj in list(col.objects):
         try:
             bpy.data.objects.remove(obj, do_unlink=True)
@@ -217,11 +224,13 @@ def ensure_material_principled(
 def _set_material_transparency(mat: bpy.types.Material, method: str = "BLENDED") -> None:
     """Set transparency behavior (Blender-version tolerant)."""
     m = method.upper()
+    # Blender 4/5
     if hasattr(mat, "surface_render_method"):
         try:
             mat.surface_render_method = m  # 'OPAQUE','DITHERED','BLENDED','CLIP'
         except Exception:
             pass
+    # Blender 2.8-3.x
     elif hasattr(mat, "blend_method"):
         legacy = {"OPAQUE": "OPAQUE", "BLENDED": "BLEND", "CLIP": "CLIP"}.get(m, "BLEND")
         try:
@@ -241,7 +250,12 @@ def ensure_material_image_emission(
     *,
     emission_strength: float = 1.0,
 ) -> bpy.types.Material:
-    """Unlit image material (Emission), with alpha support (Transparent mix)."""
+    """Unlit image material (Emission), with alpha support (Transparent mix).
+
+    Tip:
+    - In Cycles, Emission DOES emit light. We rely on per-object ray visibility
+      to keep overlay planes from lighting the scene (see ensure_image_plane).
+    """
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
@@ -267,6 +281,13 @@ def ensure_material_image_emission(
     tex.image = img
     try:
         img.alpha_mode = 'STRAIGHT'
+    except Exception:
+        pass
+    # Ensure it's treated as color unless user wants otherwise
+    try:
+        if hasattr(img, "colorspace_settings"):
+            # leave default; but you can force 'sRGB' if you want
+            pass
     except Exception:
         pass
 
@@ -315,6 +336,7 @@ def place_on_poster_plane(
     poster_xy_mm: Sequence[float],
     z_mm: float,
 ) -> None:
+    """Parent obj to camera and place it in POSTER space (mm)."""
     obj.parent = cam_obj
     obj.matrix_parent_inverse = cam_obj.matrix_world.inverted()
     obj.location = Vector((float(poster_xy_mm[0]), float(poster_xy_mm[1]), -plane_distance_mm + float(z_mm)))
@@ -441,6 +463,129 @@ def apply_cycles_settings(cfg: Dict[str, Any]) -> None:
                     pass
 
 
+def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
+    """Select Cycles compute backend and devices (GPU/CPU) from cfg["cycles"].
+
+    Expected manifest keys (all optional):
+      cycles.device: "GPU" | "CPU"                  (default: "GPU")
+      cycles.compute_device_type: "HIP" | "CUDA" | "OPTIX" | "ONEAPI" | "METAL" | "NONE"
+                                               (default: "HIP" on AMD)
+      cycles.use_cpu: bool                           (default: false)
+      cycles.use_all_gpus: bool                      (default: true)
+      cycles.preferred_devices: ["name substr", ...] (default: [])
+        - If provided, only devices whose name contains any substring will be enabled.
+
+    Notes:
+    - Blender is launched with --factory-startup for renders in this repo, so we set this
+      every run to ensure reproducibility.
+    - If something fails, we gracefully fall back to CPU.
+    """
+    scene = bpy.context.scene
+    if scene.render.engine != 'CYCLES':
+        return
+
+    c = cfg.get("cycles", {})
+    want_device = str(c.get("device", "GPU")).upper()
+    compute = str(c.get("compute_device_type", "HIP")).upper()
+    use_cpu = bool(c.get("use_cpu", False))
+    use_all_gpus = bool(c.get("use_all_gpus", True))
+    preferred_substrings = [str(s) for s in (c.get("preferred_devices", []) or [])]
+
+    # Ensure Cycles prefs are accessible
+    prefs = None
+    try:
+        addon = bpy.context.preferences.addons.get("cycles")
+        if addon is None:
+            try:
+                bpy.ops.preferences.addon_enable(module="cycles")
+            except Exception:
+                pass
+            addon = bpy.context.preferences.addons.get("cycles")
+        if addon is not None:
+            prefs = addon.preferences
+    except Exception:
+        prefs = None
+
+    if prefs is None:
+        # Can't configure prefs; at least set scene device
+        try:
+            scene.cycles.device = 'GPU' if want_device == "GPU" else 'CPU'
+        except Exception:
+            pass
+        print("[blendlib] WARN: Could not access Cycles preferences; device selection may not work.")
+        return
+
+    # Set compute backend (HIP for AMD, CUDA/OPTIX for NVIDIA, etc.)
+    if hasattr(prefs, "compute_device_type"):
+        try:
+            prefs.compute_device_type = compute
+        except Exception:
+            # fall back attempt order
+            for fallback in ("HIP", "CUDA", "OPTIX", "ONEAPI", "METAL", "NONE"):
+                if fallback == compute:
+                    continue
+                try:
+                    prefs.compute_device_type = fallback
+                    compute = fallback
+                    break
+                except Exception:
+                    continue
+
+    # Refresh devices list
+    try:
+        prefs.get_devices()
+    except Exception:
+        try:
+            prefs.refresh_devices()
+        except Exception:
+            pass
+
+    enabled_gpus: List[str] = []
+    enabled_cpu = False
+
+    try:
+        for d in prefs.devices:
+            dt = str(getattr(d, "type", "")).upper()
+            name = str(getattr(d, "name", ""))
+
+            if dt == "CPU":
+                d.use = use_cpu
+                enabled_cpu = enabled_cpu or bool(d.use)
+                continue
+
+            if want_device == "GPU" and dt == compute:
+                if preferred_substrings:
+                    d.use = any(sub.lower() in name.lower() for sub in preferred_substrings)
+                else:
+                    d.use = True if use_all_gpus else (len(enabled_gpus) == 0)
+                if d.use:
+                    enabled_gpus.append(name)
+            else:
+                d.use = False
+    except Exception as e:
+        print(f"[blendlib] WARN: Failed while enabling Cycles devices: {e!r}")
+
+    # Tell Cycles to use GPU if we enabled at least one GPU, else CPU.
+    try:
+        if want_device == "GPU" and enabled_gpus:
+            scene.cycles.device = 'GPU'
+        else:
+            scene.cycles.device = 'CPU'
+    except Exception:
+        pass
+
+    # Helpful diagnostics for make render output
+    try:
+        cd = getattr(prefs, "compute_device_type", None)
+        print(f"[blendlib] Cycles compute_device_type={cd} scene.cycles.device={getattr(scene.cycles,'device',None)}")
+    except Exception:
+        pass
+    if enabled_gpus:
+        print(f"[blendlib] Enabled GPU devices: {enabled_gpus}")
+    if enabled_cpu:
+        print("[blendlib] Enabled CPU device as well.")
+
+
 def apply_render_settings(cfg: Dict[str, Any], poster_in: float, ppi_override: Optional[float] = None) -> None:
     scene = bpy.context.scene
     r = cfg.get("render", {})
@@ -466,9 +611,10 @@ def apply_render_settings(cfg: Dict[str, Any], poster_in: float, ppi_override: O
     scene.render.resolution_y = res
     scene.render.resolution_percentage = 100
 
-    # If we are in Cycles, apply cycles settings
+    # If we are in Cycles, apply cycles settings + device selection
     if scene.render.engine == 'CYCLES':
         apply_cycles_settings(cfg)
+        configure_cycles_devices(cfg)
 
 
 def apply_world_settings(cfg: Dict[str, Any]) -> None:
@@ -675,9 +821,12 @@ def _make_cyclorama_mesh(
     floor_depth_mm: float,
     wall_height_mm: float,
     radius_mm: float,
-    segments: int = 16,
+    segments: int,
 ) -> bpy.types.Mesh:
-    """Create/update a simple cyclorama mesh (floor + curved corner + wall)."""
+    """Create/update a simple cyclorama mesh: floor -> rounded bend -> wall.
+
+    The mesh is centered on X, extends in -Y (floor depth), and +Z (wall).
+    """
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
@@ -801,6 +950,20 @@ def ensure_image_plane(
     except Exception:
         pass
 
+    # In Cycles, prevent this emission plane from LIGHTING the scene:
+    # make it camera-visible only (still shows in render).
+    try:
+        vis = obj.cycles_visibility
+        vis.camera = True
+        vis.diffuse = False
+        vis.glossy = False
+        vis.transmission = False
+        vis.shadow = False
+        vis.scatter = False
+    except Exception:
+        # Some versions expose these directly (or not at all) — ignore if missing.
+        pass
+
     if obj_cfg.get("space", "WORLD") == "POSTER":
         place_on_poster_plane(
             obj,
@@ -824,14 +987,24 @@ def ensure_image_plane(
 # Asset import (GLB / WRL)
 # ----------------------------
 
-def _import_objects_and_get_new(import_op) -> List[bpy.types.Object]:
+def _import_objects_and_get_new(op) -> List[bpy.types.Object]:
+    """Run an import operator and return the newly created bpy.data.objects."""
     before = {o.as_pointer() for o in bpy.data.objects}
-    import_op()
-    return [o for o in bpy.data.objects if o.as_pointer() not in before]
+    op()
+    after_objs = list(bpy.data.objects)
+    new_objs: List[bpy.types.Object] = []
+    for o in after_objs:
+        try:
+            if o.as_pointer() not in before:
+                new_objs.append(o)
+        except Exception:
+            # if pointer compare fails, best effort: include it
+            new_objs.append(o)
+    return new_objs
 
 
-def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, importer: str) -> bpy.types.Object:
-    """Import a GLB/WRL and wrap it under a stable Empty root named obj_cfg['name'].
+def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, *, importer: str) -> bpy.types.Object:
+    """Import an asset into a stable collection arrangement.
 
     Visible geometry lives in ASSET_<name> (child collection under obj_cfg['collection']).
     Root Empty is stored in HELPERS to reduce WORLD clutter.
