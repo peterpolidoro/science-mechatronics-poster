@@ -1142,6 +1142,142 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, *,
 
 
 # ----------------------------
+# .blend library assets (linked/appended)
+# ----------------------------
+
+def load_collection_from_blend(
+    blend_path: str,
+    *,
+    collection_name: Optional[str] = None,
+    fallback_names: Sequence[str] = (),
+    link: bool = True,
+) -> bpy.types.Collection:
+    """Load a Collection datablock from an external .blend file.
+
+    If collection_name is None or not found, we try fallback_names in order,
+    otherwise we fall back to the first available collection.
+
+    This is designed for a manifest workflow where you keep your editable asset
+    in assets/compiled/blend/*.blend and instance it into the poster scene.
+
+    Returns the loaded bpy.types.Collection.
+    """
+    blend_path = str(Path(blend_path).resolve())
+
+    with bpy.data.libraries.load(blend_path, link=link) as (data_from, data_to):
+        available = list(getattr(data_from, "collections", []))
+        if not available:
+            raise RuntimeError(f"No collections found in blend library: {blend_path}")
+
+        candidates: List[str] = []
+        if collection_name:
+            candidates.append(str(collection_name))
+        for n in fallback_names:
+            if n:
+                candidates.append(str(n))
+
+        picked = None
+        for c in candidates:
+            if c in available:
+                picked = c
+                break
+        if picked is None:
+            picked = available[0]
+
+        data_to.collections = [picked]
+
+    coll = data_to.collections[0]
+    if coll is None:
+        raise RuntimeError(f"Failed to load collection '{picked}' from {blend_path}")
+
+    print(f"[blendlib] Loaded collection '{coll.name}' from blend: {blend_path}")
+    return coll
+
+
+def ensure_imported_blend_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path) -> bpy.types.Object:
+    """Import a .blend 'asset' by instancing a collection from a .blend library.
+
+    Expected manifest keys for an object:
+      kind: "import_blend"
+      filepath: path to .blend file (relative to manifest or repo root)
+      blend_collection: collection name inside the .blend (optional)
+      link: bool (default True) - link from library (recommended) vs append
+      import_scale: float (default 1.0)
+      location_mm, rotation_deg, scale: transforms applied to the root empty
+
+    Behavior (mirrors import_glb/import_wrl pattern):
+      - Root empty named <name> goes into HELPERS (non-rendering transform handle).
+      - A child collection ASSET_<name> under obj_cfg.collection (default WORLD) is cleared/rebuilt.
+      - An instancer empty INST_<name> is created inside ASSET_<name>, parented to the root,
+        and set to instance the loaded collection.
+    """
+    name = obj_cfg["name"]
+    parent_col_name = obj_cfg.get("collection", "WORLD")
+
+    parent_col = ensure_collection(parent_col_name)
+    helpers_col = ensure_collection("HELPERS")
+    asset_col = ensure_child_collection(parent_col, f"ASSET_{name}")
+
+    # Root transform handle (lives in HELPERS)
+    root = ensure_empty(name, [0.0, 0.0, 0.0])
+    root.hide_render = True
+    move_object_to_collection(root, helpers_col)
+
+    # Clear any previous instancer objects
+    remove_collection_objects(asset_col)
+
+    # Resolve path
+    blend_path = abspath_from_manifest(manifest_path, obj_cfg["filepath"])
+
+    # Pick a collection inside the .blend
+    requested = obj_cfg.get("blend_collection", None)
+    link = bool(obj_cfg.get("link", True))
+    fallback = [f"EXPORT_{name}", name, "Collection"]
+
+    coll = load_collection_from_blend(
+        blend_path,
+        collection_name=str(requested) if requested is not None else None,
+        fallback_names=fallback,
+        link=link,
+    )
+
+    # Instancer object that actually draws the linked collection
+    inst_name = f"INST_{name}"
+    old_inst = bpy.data.objects.get(inst_name)
+    if old_inst is not None:
+        try:
+            bpy.data.objects.remove(old_inst, do_unlink=True)
+        except Exception:
+            pass
+
+    inst = bpy.data.objects.new(inst_name, None)
+    bpy.context.scene.collection.objects.link(inst)
+    move_object_to_collection(inst, asset_col)
+
+    inst.empty_display_type = 'PLAIN_AXES'
+    inst.instance_type = 'COLLECTION'
+    inst.instance_collection = coll
+
+    # Parent to the root so root carries location/rotation/scale
+    inst.parent = root
+    try:
+        inst.matrix_parent_inverse = root.matrix_world.inverted()
+    except Exception:
+        pass
+
+    # Apply transforms to root
+    loc = obj_cfg.get("location_mm", [0.0, 0.0, 0.0])
+    rot = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
+    sc = obj_cfg.get("scale", [1.0, 1.0, 1.0])
+    import_scale = float(obj_cfg.get("import_scale", 1.0))
+    sc2 = [float(sc[0]) * import_scale, float(sc[1]) * import_scale, float(sc[2]) * import_scale]
+    set_world_transform(root, loc, rot, sc2)
+
+    return root
+
+
+
+# ----------------------------
 # Main entrypoint
 # ----------------------------
 
@@ -1188,6 +1324,10 @@ def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] =
 
         elif kind == "import_wrl":
             ensure_imported_asset(obj_cfg, manifest_path, importer="wrl")
+
+
+        elif kind in ("import_blend", "instance_blend_collection"):
+            ensure_imported_blend_asset(obj_cfg, manifest_path)
 
         else:
             print(f"[WARN] Unknown kind '{kind}' for object '{obj_cfg.get('name')}'")

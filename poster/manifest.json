@@ -46,7 +46,9 @@
     "device": "GPU",
     "compute_device_type": "HIP",
     "use_all_gpus": false,
-    "preferred_devices": ["AMD Radeon RX 7600"],
+    "preferred_devices": [
+      "AMD Radeon RX 7600"
+    ],
     "use_cpu": false
   },
   "world": {
@@ -209,7 +211,7 @@
       "kind": "image_plane",
       "collection": "OVERLAY",
       "space": "POSTER",
-      "image_path": "../assets/images/title.png",
+      "image_path": "./assets/images/title.png",
       "size_mm": [
         1215,
         164.7
@@ -223,9 +225,11 @@
     },
     {
       "name": "joystick",
-      "kind": "import_glb",
+      "kind": "import_blend",
       "collection": "WORLD",
-      "filepath": "../assets/compiled/glb/joystick.glb",
+      "filepath": "../assets/compiled/blend/joystick.blend",
+      "blend_collection": "ROOT-joystick",
+      "link": true,
       "location_mm": [
         0,
         0,
@@ -235,6 +239,30 @@
         0,
         0,
         -45
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "import_scale": 1.0
+    },
+    {
+      "name": "pcb",
+      "kind": "import_blend",
+      "collection": "WORLD",
+      "filepath": "../assets/compiled/blend/pcb.blend",
+      "blend_collection": "ROOT-pcb",
+      "link": true,
+      "location_mm": [
+        -250,
+        0,
+        -250
+      ],
+      "rotation_deg": [
+        22.5,
+        0,
+        0
       ],
       "scale": [
         1,
