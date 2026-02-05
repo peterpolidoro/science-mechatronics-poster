@@ -45,7 +45,8 @@
     "use_caustics": false,
     "device": "GPU",
     "compute_device_type": "HIP",
-    "use_all_gpus": true,
+    "use_all_gpus": false,
+    "preferred_devices": ["AMD Radeon RX 7600"],
     "use_cpu": false
   },
   "world": {

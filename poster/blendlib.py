@@ -473,7 +473,8 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
       cycles.use_cpu: bool                           (default: false)
       cycles.use_all_gpus: bool                      (default: true)
       cycles.preferred_devices: ["name substr", ...] (default: [])
-        - If provided, only devices whose name contains any substring will be enabled.
+        - If provided, ONLY devices whose name contains any substring will be enabled.
+        - When preferred_devices is non-empty, it overrides use_all_gpus.
 
     Notes:
     - Blender is launched with --factory-startup for renders in this repo, so we set this
@@ -489,7 +490,7 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
     compute = str(c.get("compute_device_type", "HIP")).upper()
     use_cpu = bool(c.get("use_cpu", False))
     use_all_gpus = bool(c.get("use_all_gpus", True))
-    preferred_substrings = [str(s) for s in (c.get("preferred_devices", []) or [])]
+    preferred_substrings = [str(s).strip() for s in (c.get("preferred_devices", []) or []) if str(s).strip()]
 
     # Ensure Cycles prefs are accessible
     prefs = None
@@ -543,8 +544,53 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
     enabled_gpus: List[str] = []
     enabled_cpu = False
 
+    # Two-pass logic so we can select "best" single GPU if needed.
+    devices = []
     try:
-        for d in prefs.devices:
+        devices = list(getattr(prefs, "devices", []))
+    except Exception:
+        devices = []
+
+    # Candidate GPUs for the selected compute backend (e.g. HIP)
+    gpu_candidates = []
+    for d in devices:
+        try:
+            dt = str(getattr(d, "type", "")).upper()
+            if dt == compute:
+                gpu_candidates.append(d)
+        except Exception:
+            pass
+
+    # If user specified preferred_devices, it overrides use_all_gpus.
+    if preferred_substrings:
+        use_all_gpus = False
+
+    # If using only one GPU and no preferred list was given, pick a "best" device.
+    best_gpu = None
+    if want_device == "GPU" and (not preferred_substrings) and (not use_all_gpus) and gpu_candidates:
+        best_score = -10**9
+        for d in gpu_candidates:
+            name = str(getattr(d, "name", ""))
+            up = name.upper()
+            score = 0
+            # Heuristic: prefer discrete GPUs (often include "RX" or "PRO/W")
+            if "RADEON RX" in up:
+                score += 100
+            if " RX " in f" {up} " or "RX" in up:
+                score += 60
+            if "PRO" in up or " W" in f" {up} ":
+                score += 25
+            # Heuristic: integrated GPUs often show up as generic "Radeon Graphics"
+            if "GRAPHICS" in up:
+                score -= 40
+            if "APU" in up or "INTEGRATED" in up:
+                score -= 20
+            if score > best_score:
+                best_score = score
+                best_gpu = d
+
+    try:
+        for d in devices:
             dt = str(getattr(d, "type", "")).upper()
             name = str(getattr(d, "name", ""))
 
@@ -553,15 +599,22 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
                 enabled_cpu = enabled_cpu or bool(d.use)
                 continue
 
-            if want_device == "GPU" and dt == compute:
-                if preferred_substrings:
-                    d.use = any(sub.lower() in name.lower() for sub in preferred_substrings)
-                else:
-                    d.use = True if use_all_gpus else (len(enabled_gpus) == 0)
-                if d.use:
-                    enabled_gpus.append(name)
-            else:
+            # Default: disable everything that isn't the requested GPU backend.
+            if want_device != "GPU" or dt != compute:
                 d.use = False
+                continue
+
+            # dt == compute and want_device == GPU
+            if preferred_substrings:
+                d.use = any(sub.lower() in name.lower() for sub in preferred_substrings)
+            else:
+                if use_all_gpus:
+                    d.use = True
+                else:
+                    d.use = (d == best_gpu) if best_gpu is not None else False
+
+            if d.use:
+                enabled_gpus.append(name)
     except Exception as e:
         print(f"[blendlib] WARN: Failed while enabling Cycles devices: {e!r}")
 
@@ -582,6 +635,8 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
         pass
     if enabled_gpus:
         print(f"[blendlib] Enabled GPU devices: {enabled_gpus}")
+    else:
+        print("[blendlib] WARN: No GPU devices enabled for Cycles; falling back to CPU.")
     if enabled_cpu:
         print("[blendlib] Enabled CPU device as well.")
 
