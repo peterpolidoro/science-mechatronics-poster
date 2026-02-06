@@ -1,7 +1,6 @@
 {
   "library_blend": "assets/library/materials/materials.blend",
   "materials_in_file": [
-    "Dots Stroke",
     "MAT_Aluminum_Brushed",
     "MAT_Aluminum_Cast_Matte",
     "MAT_Aluminum_Machined",
@@ -12,8 +11,7 @@
     "MAT_Plastic_White",
     "MAT_Rubber_Black",
     "MAT_Steel_Black_Oxide",
-    "MAT_Steel_Polished",
-    "Material"
+    "MAT_Steel_Polished"
   ],
   "material_specs": {
     "MAT_Plastic_Black": {
