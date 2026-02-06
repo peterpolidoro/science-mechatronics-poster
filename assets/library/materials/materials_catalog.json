@@ -1,5 +1,245 @@
 {
   "library_blend": "assets/library/materials/materials.blend",
-  "materials_in_file": [],
-  "material_specs": {}
+  "materials_in_file": [
+    "Dots Stroke",
+    "MAT_Aluminum_Brushed",
+    "MAT_Aluminum_Cast_Matte",
+    "MAT_Aluminum_Machined",
+    "MAT_Paint_Black_PowderCoat",
+    "MAT_Paint_Red_Gloss",
+    "MAT_Plastic_Black",
+    "MAT_Plastic_Grey",
+    "MAT_Plastic_White",
+    "MAT_Rubber_Black",
+    "MAT_Steel_Black_Oxide",
+    "MAT_Steel_Polished",
+    "Material"
+  ],
+  "material_specs": {
+    "MAT_Plastic_Black": {
+      "description": "Neutral black plastic (moderate roughness, subtle coat).",
+      "tags": [
+        "plastic",
+        "black"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.03,
+        0.03,
+        0.03,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.45,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.1,
+      "coat_roughness": 0.2
+    },
+    "MAT_Plastic_White": {
+      "description": "Neutral white plastic (slightly glossy).",
+      "tags": [
+        "plastic",
+        "white"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.9,
+        0.9,
+        0.9,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.35,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.05,
+      "coat_roughness": 0.25
+    },
+    "MAT_Rubber_Black": {
+      "description": "Black rubber (high roughness, low specular).",
+      "tags": [
+        "rubber",
+        "black"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.02,
+        0.02,
+        0.02,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.8,
+      "specular": 0.2,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.5
+    },
+    "MAT_Aluminum_Brushed": {
+      "description": "Brushed aluminum baseline (metallic, moderate roughness).",
+      "tags": [
+        "metal",
+        "aluminum"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.8,
+        0.8,
+        0.82,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.28,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.25
+    },
+    "MAT_Steel_Polished": {
+      "description": "Polished steel baseline (metallic, low roughness).",
+      "tags": [
+        "metal",
+        "steel"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.72,
+        0.74,
+        0.76,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.12,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Paint_Red_Gloss": {
+      "description": "Glossy red paint (plastic base with coat).",
+      "tags": [
+        "paint",
+        "red"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.6,
+        0.05,
+        0.05,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.3,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.35,
+      "coat_roughness": 0.1
+    },
+    "MAT_Paint_Black_PowderCoat": {
+      "description": "Black powder-coated / painted metal (satin). Good for stepper motor body housings.",
+      "tags": [
+        "paint",
+        "black",
+        "satin"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.02,
+        0.02,
+        0.02,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.6,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.08,
+      "coat_roughness": 0.35
+    },
+    "MAT_Aluminum_Cast_Matte": {
+      "description": "Cast / bead-blasted aluminum (matte, slightly rough). Good for stepper motor end bells & housings.",
+      "tags": [
+        "metal",
+        "aluminum",
+        "cast"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.78,
+        0.78,
+        0.8,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.55,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.25
+    },
+    "MAT_Aluminum_Machined": {
+      "description": "Machined aluminum (clean, slightly shinier than cast).",
+      "tags": [
+        "metal",
+        "aluminum",
+        "machined"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.83,
+        0.83,
+        0.85,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.28,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Steel_Black_Oxide": {
+      "description": "Black-oxide steel for dark fasteners / socket head screws.",
+      "tags": [
+        "metal",
+        "steel",
+        "black"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.06,
+        0.06,
+        0.06,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.35,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Plastic_Grey": {
+      "description": "Neutral light-grey plastic (connector housings).",
+      "tags": [
+        "plastic",
+        "grey",
+        "gray"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.65,
+        0.65,
+        0.65,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.45,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.05,
+      "coat_roughness": 0.3
+    }
+  }
 }
