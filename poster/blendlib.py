@@ -10,11 +10,7 @@ Highlights:
 - Stores imported-asset root empties in HELPERS (reduces WORLD clutter)
 - Blender 5 compatible transparency/material APIs
 - Adds Cycles render settings support via manifest["cycles"]
-- Adds Cycles GPU selection (HIP/CUDA/OPTIX/etc) via manifest["cycles"] (see configure_cycles_devices)
 - Respects per-object `"enabled": false` in the manifest
-
-NOTE:
-This file is designed to be used by poster/open.py and poster/render.py.
 """
 
 from __future__ import annotations
@@ -76,7 +72,6 @@ def ensure_collection(name: str) -> bpy.types.Collection:
         try:
             scene.collection.children.link(col)
         except RuntimeError:
-            # Already linked or invalid context
             pass
     return col
 
@@ -94,7 +89,6 @@ def ensure_child_collection(parent: bpy.types.Collection, name: str) -> bpy.type
 
 
 def move_object_to_collection(obj: bpy.types.Object, col: bpy.types.Collection) -> None:
-    """Unlink obj from all its current collections and link to col."""
     for c in list(obj.users_collection):
         try:
             c.objects.unlink(obj)
@@ -105,7 +99,6 @@ def move_object_to_collection(obj: bpy.types.Object, col: bpy.types.Collection) 
 
 
 def remove_collection_objects(col: bpy.types.Collection) -> None:
-    """Delete all objects directly in this collection."""
     for obj in list(col.objects):
         try:
             bpy.data.objects.remove(obj, do_unlink=True)
@@ -224,13 +217,11 @@ def ensure_material_principled(
 def _set_material_transparency(mat: bpy.types.Material, method: str = "BLENDED") -> None:
     """Set transparency behavior (Blender-version tolerant)."""
     m = method.upper()
-    # Blender 4/5
     if hasattr(mat, "surface_render_method"):
         try:
             mat.surface_render_method = m  # 'OPAQUE','DITHERED','BLENDED','CLIP'
         except Exception:
             pass
-    # Blender 2.8-3.x
     elif hasattr(mat, "blend_method"):
         legacy = {"OPAQUE": "OPAQUE", "BLENDED": "BLEND", "CLIP": "CLIP"}.get(m, "BLEND")
         try:
@@ -250,12 +241,7 @@ def ensure_material_image_emission(
     *,
     emission_strength: float = 1.0,
 ) -> bpy.types.Material:
-    """Unlit image material (Emission), with alpha support (Transparent mix).
-
-    Tip:
-    - In Cycles, Emission DOES emit light. We rely on per-object ray visibility
-      to keep overlay planes from lighting the scene (see ensure_image_plane).
-    """
+    """Unlit image material (Emission), with alpha support (Transparent mix)."""
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
@@ -281,13 +267,6 @@ def ensure_material_image_emission(
     tex.image = img
     try:
         img.alpha_mode = 'STRAIGHT'
-    except Exception:
-        pass
-    # Ensure it's treated as color unless user wants otherwise
-    try:
-        if hasattr(img, "colorspace_settings"):
-            # leave default; but you can force 'sRGB' if you want
-            pass
     except Exception:
         pass
 
@@ -336,7 +315,6 @@ def place_on_poster_plane(
     poster_xy_mm: Sequence[float],
     z_mm: float,
 ) -> None:
-    """Parent obj to camera and place it in POSTER space (mm)."""
     obj.parent = cam_obj
     obj.matrix_parent_inverse = cam_obj.matrix_world.inverted()
     obj.location = Vector((float(poster_xy_mm[0]), float(poster_xy_mm[1]), -plane_distance_mm + float(z_mm)))
@@ -463,184 +441,6 @@ def apply_cycles_settings(cfg: Dict[str, Any]) -> None:
                     pass
 
 
-def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
-    """Select Cycles compute backend and devices (GPU/CPU) from cfg["cycles"].
-
-    Expected manifest keys (all optional):
-      cycles.device: "GPU" | "CPU"                  (default: "GPU")
-      cycles.compute_device_type: "HIP" | "CUDA" | "OPTIX" | "ONEAPI" | "METAL" | "NONE"
-                                               (default: "HIP" on AMD)
-      cycles.use_cpu: bool                           (default: false)
-      cycles.use_all_gpus: bool                      (default: true)
-      cycles.preferred_devices: ["name substr", ...] (default: [])
-        - If provided, ONLY devices whose name contains any substring will be enabled.
-        - When preferred_devices is non-empty, it overrides use_all_gpus.
-
-    Notes:
-    - Blender is launched with --factory-startup for renders in this repo, so we set this
-      every run to ensure reproducibility.
-    - If something fails, we gracefully fall back to CPU.
-    """
-    scene = bpy.context.scene
-    if scene.render.engine != 'CYCLES':
-        return
-
-    c = cfg.get("cycles", {})
-    want_device = str(c.get("device", "GPU")).upper()
-    compute = str(c.get("compute_device_type", "HIP")).upper()
-    use_cpu = bool(c.get("use_cpu", False))
-    use_all_gpus = bool(c.get("use_all_gpus", True))
-    preferred_substrings = [str(s).strip() for s in (c.get("preferred_devices", []) or []) if str(s).strip()]
-
-    # Ensure Cycles prefs are accessible
-    prefs = None
-    try:
-        addon = bpy.context.preferences.addons.get("cycles")
-        if addon is None:
-            try:
-                bpy.ops.preferences.addon_enable(module="cycles")
-            except Exception:
-                pass
-            addon = bpy.context.preferences.addons.get("cycles")
-        if addon is not None:
-            prefs = addon.preferences
-    except Exception:
-        prefs = None
-
-    if prefs is None:
-        # Can't configure prefs; at least set scene device
-        try:
-            scene.cycles.device = 'GPU' if want_device == "GPU" else 'CPU'
-        except Exception:
-            pass
-        print("[blendlib] WARN: Could not access Cycles preferences; device selection may not work.")
-        return
-
-    # Set compute backend (HIP for AMD, CUDA/OPTIX for NVIDIA, etc.)
-    if hasattr(prefs, "compute_device_type"):
-        try:
-            prefs.compute_device_type = compute
-        except Exception:
-            # fall back attempt order
-            for fallback in ("HIP", "CUDA", "OPTIX", "ONEAPI", "METAL", "NONE"):
-                if fallback == compute:
-                    continue
-                try:
-                    prefs.compute_device_type = fallback
-                    compute = fallback
-                    break
-                except Exception:
-                    continue
-
-    # Refresh devices list
-    try:
-        prefs.get_devices()
-    except Exception:
-        try:
-            prefs.refresh_devices()
-        except Exception:
-            pass
-
-    enabled_gpus: List[str] = []
-    enabled_cpu = False
-
-    # Two-pass logic so we can select "best" single GPU if needed.
-    devices = []
-    try:
-        devices = list(getattr(prefs, "devices", []))
-    except Exception:
-        devices = []
-
-    # Candidate GPUs for the selected compute backend (e.g. HIP)
-    gpu_candidates = []
-    for d in devices:
-        try:
-            dt = str(getattr(d, "type", "")).upper()
-            if dt == compute:
-                gpu_candidates.append(d)
-        except Exception:
-            pass
-
-    # If user specified preferred_devices, it overrides use_all_gpus.
-    if preferred_substrings:
-        use_all_gpus = False
-
-    # If using only one GPU and no preferred list was given, pick a "best" device.
-    best_gpu = None
-    if want_device == "GPU" and (not preferred_substrings) and (not use_all_gpus) and gpu_candidates:
-        best_score = -10**9
-        for d in gpu_candidates:
-            name = str(getattr(d, "name", ""))
-            up = name.upper()
-            score = 0
-            # Heuristic: prefer discrete GPUs (often include "RX" or "PRO/W")
-            if "RADEON RX" in up:
-                score += 100
-            if " RX " in f" {up} " or "RX" in up:
-                score += 60
-            if "PRO" in up or " W" in f" {up} ":
-                score += 25
-            # Heuristic: integrated GPUs often show up as generic "Radeon Graphics"
-            if "GRAPHICS" in up:
-                score -= 40
-            if "APU" in up or "INTEGRATED" in up:
-                score -= 20
-            if score > best_score:
-                best_score = score
-                best_gpu = d
-
-    try:
-        for d in devices:
-            dt = str(getattr(d, "type", "")).upper()
-            name = str(getattr(d, "name", ""))
-
-            if dt == "CPU":
-                d.use = use_cpu
-                enabled_cpu = enabled_cpu or bool(d.use)
-                continue
-
-            # Default: disable everything that isn't the requested GPU backend.
-            if want_device != "GPU" or dt != compute:
-                d.use = False
-                continue
-
-            # dt == compute and want_device == GPU
-            if preferred_substrings:
-                d.use = any(sub.lower() in name.lower() for sub in preferred_substrings)
-            else:
-                if use_all_gpus:
-                    d.use = True
-                else:
-                    d.use = (d == best_gpu) if best_gpu is not None else False
-
-            if d.use:
-                enabled_gpus.append(name)
-    except Exception as e:
-        print(f"[blendlib] WARN: Failed while enabling Cycles devices: {e!r}")
-
-    # Tell Cycles to use GPU if we enabled at least one GPU, else CPU.
-    try:
-        if want_device == "GPU" and enabled_gpus:
-            scene.cycles.device = 'GPU'
-        else:
-            scene.cycles.device = 'CPU'
-    except Exception:
-        pass
-
-    # Helpful diagnostics for make render output
-    try:
-        cd = getattr(prefs, "compute_device_type", None)
-        print(f"[blendlib] Cycles compute_device_type={cd} scene.cycles.device={getattr(scene.cycles,'device',None)}")
-    except Exception:
-        pass
-    if enabled_gpus:
-        print(f"[blendlib] Enabled GPU devices: {enabled_gpus}")
-    else:
-        print("[blendlib] WARN: No GPU devices enabled for Cycles; falling back to CPU.")
-    if enabled_cpu:
-        print("[blendlib] Enabled CPU device as well.")
-
-
 def apply_render_settings(cfg: Dict[str, Any], poster_in: float, ppi_override: Optional[float] = None) -> None:
     scene = bpy.context.scene
     r = cfg.get("render", {})
@@ -666,10 +466,9 @@ def apply_render_settings(cfg: Dict[str, Any], poster_in: float, ppi_override: O
     scene.render.resolution_y = res
     scene.render.resolution_percentage = 100
 
-    # If we are in Cycles, apply cycles settings + device selection
+    # If we are in Cycles, apply cycles settings
     if scene.render.engine == 'CYCLES':
         apply_cycles_settings(cfg)
-        configure_cycles_devices(cfg)
 
 
 def apply_world_settings(cfg: Dict[str, Any]) -> None:
@@ -779,7 +578,23 @@ def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, flo
 # Lighting
 # ----------------------------
 
-def _ensure_track_to(obj: bpy.types.Object, target: bpy.types.Object) -> None:
+def _ensure_track_to(
+    obj: bpy.types.Object,
+    target: bpy.types.Object,
+    *,
+    track_axis: str = 'TRACK_NEGATIVE_Z',
+    up_axis: str = 'UP_Y',
+) -> None:
+    """Ensure a Track To constraint exists on obj pointing at target.
+
+    track_axis examples:
+      - 'TRACK_NEGATIVE_Z' (camera/lights default)
+      - 'TRACK_POSITIVE_Z' (useful for planes whose +Z should face the target)
+
+    up_axis examples:
+      - 'UP_Y' (camera style: +Y is "up")
+      - 'UP_Z'
+    """
     c = None
     for cc in obj.constraints:
         if cc.type == 'TRACK_TO':
@@ -788,8 +603,14 @@ def _ensure_track_to(obj: bpy.types.Object, target: bpy.types.Object) -> None:
     if c is None:
         c = obj.constraints.new(type='TRACK_TO')
     c.target = target
-    c.track_axis = 'TRACK_NEGATIVE_Z'
-    c.up_axis = 'UP_Y'
+    try:
+        c.track_axis = str(track_axis)
+    except Exception:
+        c.track_axis = 'TRACK_NEGATIVE_Z'
+    try:
+        c.up_axis = str(up_axis)
+    except Exception:
+        c.up_axis = 'UP_Y'
 
 
 def _ensure_area_light(name: str, cfg: Dict[str, Any], lights_col: bpy.types.Collection) -> bpy.types.Object:
@@ -876,12 +697,9 @@ def _make_cyclorama_mesh(
     floor_depth_mm: float,
     wall_height_mm: float,
     radius_mm: float,
-    segments: int,
+    segments: int = 16,
 ) -> bpy.types.Mesh:
-    """Create/update a simple cyclorama mesh: floor -> rounded bend -> wall.
-
-    The mesh is centered on X, extends in -Y (floor depth), and +Z (wall).
-    """
+    """Create/update a simple cyclorama mesh (floor + curved corner + wall)."""
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
@@ -979,6 +797,30 @@ def ensure_image_plane(
     cam_obj: bpy.types.Object,
     poster_plane_distance: float,
 ) -> bpy.types.Object:
+    """Create/update an image plane.
+
+    Two placement modes:
+
+    1) space="POSTER"
+       - The plane is parented to the camera and positioned in "poster mm" coordinates so that
+         poster_xy_mm and size_mm correspond to millimeters in the rendered poster image.
+       - Optional: screen_lock (default true) keeps the on-screen size/position constant even if
+         you move the plane closer/farther via z_mm (uses similar triangles).
+
+       Extra optional keys (POSTER):
+         poster_xy_mm: [x_mm, y_mm] on the poster (0,0 is center)
+         size_mm: [w_mm, h_mm] on the poster
+         z_mm: distance offset toward the camera (mm). Larger -> closer to camera.
+         screen_lock: bool (default true) keep screen size/position constant when z_mm != 0.
+         aim_target_mm: [x,y,z] world-space point the plane's normal line passes through
+         aim_target_name: string name for the helper empty (optional)
+         aim_track_axis: e.g. 'TRACK_NEGATIVE_Z' or 'TRACK_POSITIVE_Z' (default: TRACK_NEGATIVE_Z)
+         aim_up_axis: e.g. 'UP_Y' (default: UP_Y)
+
+    2) space="WORLD"
+       - The plane is placed in world space with location_mm/rotation_deg and scaled by size_mm.
+         The 'scale' vector (if present) multiplies size_mm.
+    """
     name = obj_cfg["name"]
     obj = bpy.data.objects.get(name)
     if obj is None:
@@ -988,9 +830,7 @@ def ensure_image_plane(
     else:
         _ensure_plane_uv(obj.data)
 
-    w_mm, h_mm = obj_cfg.get("size_mm", [100.0, 100.0])
-    obj.scale = Vector((float(w_mm), float(h_mm), 1.0))
-
+    # Material
     img_path = abspath_from_manifest(manifest_path, obj_cfg["image_path"])
     strength = float(obj_cfg.get("emission_strength", 1.0))
     mat = ensure_material_image_emission("MAT_" + name, img_path, emission_strength=strength)
@@ -1005,35 +845,92 @@ def ensure_image_plane(
     except Exception:
         pass
 
-    # In Cycles, prevent this emission plane from LIGHTING the scene:
-    # make it camera-visible only (still shows in render).
+    # In Cycles, keep overlay planes from affecting lighting/reflections.
     try:
-        vis = obj.cycles_visibility
-        vis.camera = True
-        vis.diffuse = False
-        vis.glossy = False
-        vis.transmission = False
-        vis.shadow = False
-        vis.scatter = False
+        obj.cycles_visibility.camera = True
+        obj.cycles_visibility.diffuse = False
+        obj.cycles_visibility.glossy = False
+        obj.cycles_visibility.transmission = False
+        obj.cycles_visibility.shadow = False
+        obj.cycles_visibility.scatter = False
     except Exception:
-        # Some versions expose these directly (or not at all) — ignore if missing.
         pass
 
-    if obj_cfg.get("space", "WORLD") == "POSTER":
-        place_on_poster_plane(
-            obj,
-            cam_obj,
-            poster_plane_distance,
-            obj_cfg.get("poster_xy_mm", [0.0, 0.0]),
-            float(obj_cfg.get("z_mm", 0.0)),
-        )
+    # Placement
+    w_mm, h_mm = obj_cfg.get("size_mm", [100.0, 100.0])
+    w_mm = float(w_mm)
+    h_mm = float(h_mm)
+
+    space = str(obj_cfg.get("space", "WORLD")).upper()
+    if space == "POSTER":
+        z_mm = float(obj_cfg.get("z_mm", 0.0))
+        screen_lock = bool(obj_cfg.get("screen_lock", True))
+
+        # Similar-triangles factor: moving closer changes physical size/offset,
+        # but we want the same on-screen layout when screen_lock is True.
+        f = 1.0
+        if screen_lock:
+            d_ref = float(poster_plane_distance)
+            d_actual = d_ref - z_mm
+            if d_actual <= 1e-6:
+                d_actual = 1e-6
+            f = d_actual / d_ref
+
+        obj.scale = Vector((w_mm * f, h_mm * f, 1.0))
+
+        poster_xy = obj_cfg.get("poster_xy_mm", [0.0, 0.0])
+        px = float(poster_xy[0]) * f if screen_lock else float(poster_xy[0])
+        py = float(poster_xy[1]) * f if screen_lock else float(poster_xy[1])
+
+        place_on_poster_plane(obj, cam_obj, poster_plane_distance, [px, py], z_mm)
+
+        # Optional "aim" so a perpendicular ray through the plane center passes through a world point.
+        aim_enabled = ("aim_target_mm" in obj_cfg) or ("aim_target_name" in obj_cfg)
+        if aim_enabled:
+            aim_loc = obj_cfg.get("aim_target_mm", [0.0, 0.0, 0.0])
+            aim_name = obj_cfg.get("aim_target_name", f"EMPTY_AimTarget_{name}")
+            tgt = ensure_empty(aim_name, aim_loc)
+            try:
+                tgt.hide_render = True
+                tgt.hide_viewport = True
+            except Exception:
+                pass
+            try:
+                move_object_to_collection(tgt, ensure_collection("HELPERS"))
+            except Exception:
+                pass
+
+            track_axis = str(obj_cfg.get("aim_track_axis", "TRACK_NEGATIVE_Z"))
+            up_axis = str(obj_cfg.get("aim_up_axis", "UP_Y"))
+            _ensure_track_to(obj, tgt, track_axis=track_axis, up_axis=up_axis)
+        else:
+            # Determinism: if the user removes aim_* keys, remove existing Track To constraints.
+            try:
+                for c in list(obj.constraints):
+                    if c.type == 'TRACK_TO':
+                        obj.constraints.remove(c)
+            except Exception:
+                pass
+
     else:
-        set_world_transform(
-            obj,
-            obj_cfg.get("location_mm", [0.0, 0.0, 0.0]),
-            obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0]),
-            obj_cfg.get("scale", [1.0, 1.0, 1.0]),
-        )
+        # WORLD space (unparent + place)
+        try:
+            obj.parent = None
+        except Exception:
+            pass
+        try:
+            for c in list(obj.constraints):
+                if c.type == 'TRACK_TO':
+                    obj.constraints.remove(c)
+        except Exception:
+            pass
+
+        loc = obj_cfg.get("location_mm", [0.0, 0.0, 0.0])
+        rot = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
+        sc = obj_cfg.get("scale", [1.0, 1.0, 1.0])
+        scale_xyz = [w_mm * float(sc[0]), h_mm * float(sc[1]), float(sc[2])]
+
+        set_world_transform(obj, loc, rot, scale_xyz)
 
     return obj
 
@@ -1042,24 +939,14 @@ def ensure_image_plane(
 # Asset import (GLB / WRL)
 # ----------------------------
 
-def _import_objects_and_get_new(op) -> List[bpy.types.Object]:
-    """Run an import operator and return the newly created bpy.data.objects."""
+def _import_objects_and_get_new(import_op) -> List[bpy.types.Object]:
     before = {o.as_pointer() for o in bpy.data.objects}
-    op()
-    after_objs = list(bpy.data.objects)
-    new_objs: List[bpy.types.Object] = []
-    for o in after_objs:
-        try:
-            if o.as_pointer() not in before:
-                new_objs.append(o)
-        except Exception:
-            # if pointer compare fails, best effort: include it
-            new_objs.append(o)
-    return new_objs
+    import_op()
+    return [o for o in bpy.data.objects if o.as_pointer() not in before]
 
 
-def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, *, importer: str) -> bpy.types.Object:
-    """Import an asset into a stable collection arrangement.
+def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, importer: str) -> bpy.types.Object:
+    """Import a GLB/WRL and wrap it under a stable Empty root named obj_cfg['name'].
 
     Visible geometry lives in ASSET_<name> (child collection under obj_cfg['collection']).
     Root Empty is stored in HELPERS to reduce WORLD clutter.
@@ -1142,142 +1029,6 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, *,
 
 
 # ----------------------------
-# .blend library assets (linked/appended)
-# ----------------------------
-
-def load_collection_from_blend(
-    blend_path: str,
-    *,
-    collection_name: Optional[str] = None,
-    fallback_names: Sequence[str] = (),
-    link: bool = True,
-) -> bpy.types.Collection:
-    """Load a Collection datablock from an external .blend file.
-
-    If collection_name is None or not found, we try fallback_names in order,
-    otherwise we fall back to the first available collection.
-
-    This is designed for a manifest workflow where you keep your editable asset
-    in assets/compiled/blend/*.blend and instance it into the poster scene.
-
-    Returns the loaded bpy.types.Collection.
-    """
-    blend_path = str(Path(blend_path).resolve())
-
-    with bpy.data.libraries.load(blend_path, link=link) as (data_from, data_to):
-        available = list(getattr(data_from, "collections", []))
-        if not available:
-            raise RuntimeError(f"No collections found in blend library: {blend_path}")
-
-        candidates: List[str] = []
-        if collection_name:
-            candidates.append(str(collection_name))
-        for n in fallback_names:
-            if n:
-                candidates.append(str(n))
-
-        picked = None
-        for c in candidates:
-            if c in available:
-                picked = c
-                break
-        if picked is None:
-            picked = available[0]
-
-        data_to.collections = [picked]
-
-    coll = data_to.collections[0]
-    if coll is None:
-        raise RuntimeError(f"Failed to load collection '{picked}' from {blend_path}")
-
-    print(f"[blendlib] Loaded collection '{coll.name}' from blend: {blend_path}")
-    return coll
-
-
-def ensure_imported_blend_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path) -> bpy.types.Object:
-    """Import a .blend 'asset' by instancing a collection from a .blend library.
-
-    Expected manifest keys for an object:
-      kind: "import_blend"
-      filepath: path to .blend file (relative to manifest or repo root)
-      blend_collection: collection name inside the .blend (optional)
-      link: bool (default True) - link from library (recommended) vs append
-      import_scale: float (default 1.0)
-      location_mm, rotation_deg, scale: transforms applied to the root empty
-
-    Behavior (mirrors import_glb/import_wrl pattern):
-      - Root empty named <name> goes into HELPERS (non-rendering transform handle).
-      - A child collection ASSET_<name> under obj_cfg.collection (default WORLD) is cleared/rebuilt.
-      - An instancer empty INST_<name> is created inside ASSET_<name>, parented to the root,
-        and set to instance the loaded collection.
-    """
-    name = obj_cfg["name"]
-    parent_col_name = obj_cfg.get("collection", "WORLD")
-
-    parent_col = ensure_collection(parent_col_name)
-    helpers_col = ensure_collection("HELPERS")
-    asset_col = ensure_child_collection(parent_col, f"ASSET_{name}")
-
-    # Root transform handle (lives in HELPERS)
-    root = ensure_empty(name, [0.0, 0.0, 0.0])
-    root.hide_render = True
-    move_object_to_collection(root, helpers_col)
-
-    # Clear any previous instancer objects
-    remove_collection_objects(asset_col)
-
-    # Resolve path
-    blend_path = abspath_from_manifest(manifest_path, obj_cfg["filepath"])
-
-    # Pick a collection inside the .blend
-    requested = obj_cfg.get("blend_collection", None)
-    link = bool(obj_cfg.get("link", True))
-    fallback = [f"EXPORT_{name}", name, "Collection"]
-
-    coll = load_collection_from_blend(
-        blend_path,
-        collection_name=str(requested) if requested is not None else None,
-        fallback_names=fallback,
-        link=link,
-    )
-
-    # Instancer object that actually draws the linked collection
-    inst_name = f"INST_{name}"
-    old_inst = bpy.data.objects.get(inst_name)
-    if old_inst is not None:
-        try:
-            bpy.data.objects.remove(old_inst, do_unlink=True)
-        except Exception:
-            pass
-
-    inst = bpy.data.objects.new(inst_name, None)
-    bpy.context.scene.collection.objects.link(inst)
-    move_object_to_collection(inst, asset_col)
-
-    inst.empty_display_type = 'PLAIN_AXES'
-    inst.instance_type = 'COLLECTION'
-    inst.instance_collection = coll
-
-    # Parent to the root so root carries location/rotation/scale
-    inst.parent = root
-    try:
-        inst.matrix_parent_inverse = root.matrix_world.inverted()
-    except Exception:
-        pass
-
-    # Apply transforms to root
-    loc = obj_cfg.get("location_mm", [0.0, 0.0, 0.0])
-    rot = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
-    sc = obj_cfg.get("scale", [1.0, 1.0, 1.0])
-    import_scale = float(obj_cfg.get("import_scale", 1.0))
-    sc2 = [float(sc[0]) * import_scale, float(sc[1]) * import_scale, float(sc[2]) * import_scale]
-    set_world_transform(root, loc, rot, sc2)
-
-    return root
-
-
-
-# ----------------------------
 # Main entrypoint
 # ----------------------------
 
@@ -1324,10 +1075,6 @@ def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] =
 
         elif kind == "import_wrl":
             ensure_imported_asset(obj_cfg, manifest_path, importer="wrl")
-
-
-        elif kind in ("import_blend", "instance_blend_collection"):
-            ensure_imported_blend_asset(obj_cfg, manifest_path)
 
         else:
             print(f"[WARN] Unknown kind '{kind}' for object '{obj_cfg.get('name')}'")
