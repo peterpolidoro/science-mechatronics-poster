@@ -368,6 +368,177 @@ def apply_color_management(cfg: Dict[str, Any]) -> None:
             pass
 
 
+
+def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
+    """Select Cycles compute backend and devices (GPU/CPU) from cfg["cycles"].
+
+    Expected manifest keys (all optional):
+      cycles.device: "GPU" | "CPU"                  (default: "GPU")
+      cycles.compute_device_type: "HIP" | "CUDA" | "OPTIX" | "ONEAPI" | "METAL" | "NONE"
+                                               (default: "HIP" on AMD)
+      cycles.use_cpu: bool                           (default: false)
+      cycles.use_all_gpus: bool                      (default: false)
+      cycles.preferred_devices: ["name substr", ...] (default: [])
+        - If provided, ONLY devices whose name contains any substring will be enabled.
+        - When preferred_devices is non-empty, it overrides use_all_gpus.
+
+    Notes:
+    - We run renders with --factory-startup for reproducibility, so we set this every run.
+    - If something fails, we gracefully fall back to CPU.
+    """
+    scene = bpy.context.scene
+    if scene.render.engine != 'CYCLES':
+        return
+
+    c = cfg.get("cycles", {})
+    want_device = str(c.get("device", "GPU")).upper()
+    compute = str(c.get("compute_device_type", "HIP")).upper()
+    use_cpu = bool(c.get("use_cpu", False))
+    use_all_gpus = bool(c.get("use_all_gpus", False))
+    preferred_substrings = [str(s).strip() for s in (c.get("preferred_devices", []) or []) if str(s).strip()]
+
+    prefs = None
+    try:
+        addon = bpy.context.preferences.addons.get("cycles")
+        if addon is None:
+            try:
+                bpy.ops.preferences.addon_enable(module="cycles")
+            except Exception:
+                pass
+            addon = bpy.context.preferences.addons.get("cycles")
+        if addon is not None:
+            prefs = addon.preferences
+    except Exception:
+        prefs = None
+
+    if prefs is None:
+        # Can't configure prefs; at least set scene device
+        try:
+            scene.cycles.device = 'GPU' if want_device == "GPU" else 'CPU'
+        except Exception:
+            pass
+        print("[blendlib] WARN: Could not access Cycles preferences; device selection may not work.")
+        return
+
+    # Set compute backend (HIP for AMD)
+    if hasattr(prefs, "compute_device_type"):
+        try:
+            prefs.compute_device_type = compute
+        except Exception:
+            for fallback in ("HIP", "CUDA", "OPTIX", "ONEAPI", "METAL", "NONE"):
+                if fallback == compute:
+                    continue
+                try:
+                    prefs.compute_device_type = fallback
+                    compute = fallback
+                    break
+                except Exception:
+                    continue
+
+    # Refresh devices list
+    try:
+        prefs.get_devices()
+    except Exception:
+        try:
+            prefs.refresh_devices()
+        except Exception:
+            pass
+
+    enabled_gpus: List[str] = []
+    enabled_cpu = False
+
+    try:
+        devices = list(getattr(prefs, "devices", []))
+    except Exception:
+        devices = []
+
+    # Candidate GPUs for the selected compute backend (e.g. HIP)
+    gpu_candidates = []
+    for d in devices:
+        try:
+            dt = str(getattr(d, "type", "")).upper()
+            if dt == compute:
+                gpu_candidates.append(d)
+        except Exception:
+            pass
+
+    # If user specified preferred_devices, it overrides use_all_gpus.
+    if preferred_substrings:
+        use_all_gpus = False
+
+    # If using only one GPU and no preferred list was given, pick a "best" device.
+    best_gpu = None
+    if want_device == "GPU" and (not preferred_substrings) and (not use_all_gpus) and gpu_candidates:
+        best_score = -10**9
+        for d in gpu_candidates:
+            name = str(getattr(d, "name", ""))
+            up = name.upper()
+            score = 0
+            if "RADEON RX" in up:
+                score += 100
+            if " RX " in f" {up} " or "RX" in up:
+                score += 60
+            if "PRO" in up or " W" in f" {up} ":
+                score += 25
+            if "GRAPHICS" in up:
+                score -= 40
+            if "APU" in up or "INTEGRATED" in up:
+                score -= 20
+            if score > best_score:
+                best_score = score
+                best_gpu = d
+
+    # Enable/disable devices
+    try:
+        for d in devices:
+            dt = str(getattr(d, "type", "")).upper()
+            name = str(getattr(d, "name", ""))
+
+            if dt == "CPU":
+                d.use = use_cpu
+                enabled_cpu = enabled_cpu or bool(d.use)
+                continue
+
+            if want_device != "GPU" or dt != compute:
+                d.use = False
+                continue
+
+            # dt == compute and want_device == GPU
+            if preferred_substrings:
+                d.use = any(sub.lower() in name.lower() for sub in preferred_substrings)
+            else:
+                if use_all_gpus:
+                    d.use = True
+                else:
+                    d.use = (d == best_gpu) if best_gpu is not None else False
+
+            if d.use:
+                enabled_gpus.append(name)
+    except Exception as e:
+        print(f"[blendlib] WARN: Failed while enabling Cycles devices: {e!r}")
+
+    # Tell Cycles to use GPU if we enabled at least one GPU, else CPU.
+    try:
+        if want_device == "GPU" and enabled_gpus:
+            scene.cycles.device = 'GPU'
+        else:
+            scene.cycles.device = 'CPU'
+    except Exception:
+        pass
+
+    try:
+        cd = getattr(prefs, "compute_device_type", None)
+        print(f"[blendlib] Cycles compute_device_type={cd} scene.cycles.device={getattr(scene.cycles,'device',None)}")
+    except Exception:
+        pass
+    if enabled_gpus:
+        print(f"[blendlib] Enabled GPU devices: {enabled_gpus}")
+    else:
+        print("[blendlib] WARN: No GPU devices enabled for Cycles; falling back to CPU.")
+    if enabled_cpu:
+        print("[blendlib] Enabled CPU device as well.")
+
+
 def apply_cycles_settings(cfg: Dict[str, Any]) -> None:
     """Apply Cycles settings from cfg["cycles"] (safe across Blender versions)."""
     c = cfg.get("cycles", {})
@@ -468,6 +639,7 @@ def apply_render_settings(cfg: Dict[str, Any], poster_in: float, ppi_override: O
 
     # If we are in Cycles, apply cycles settings
     if scene.render.engine == 'CYCLES':
+        configure_cycles_devices(cfg)
         apply_cycles_settings(cfg)
 
 
