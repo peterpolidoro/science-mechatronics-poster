@@ -1028,6 +1028,229 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, im
     return root
 
 
+
+# ----------------------------
+# 3D Text (optional)
+# ----------------------------
+
+def ensure_text_object(
+    obj_cfg: Dict[str, Any],
+    manifest_path: str | Path,
+    styles: Dict[str, Any],
+    cam_obj: bpy.types.Object,
+    poster_plane_distance: float,
+) -> bpy.types.Object:
+    """Create/update a 3D text object (FONT curve)."""
+    name = obj_cfg["name"]
+
+    curve = bpy.data.curves.get(name + "_FONT")
+    if curve is None:
+        curve = bpy.data.curves.new(name + "_FONT", type='FONT')
+
+    obj = bpy.data.objects.get(name)
+    if obj is None:
+        obj = bpy.data.objects.new(name, curve)
+        bpy.context.scene.collection.objects.link(obj)
+    else:
+        obj.data = curve
+
+    curve.body = obj_cfg.get("text", "")
+    style_name = str(obj_cfg.get("style", ""))
+    style = styles.get(style_name, {}) if isinstance(styles, dict) else {}
+
+    curve.size = float(obj_cfg.get("size_mm", style.get("size_mm", 20.0)))
+    curve.extrude = float(obj_cfg.get("extrude_mm", style.get("extrude_mm", 0.0)))
+
+    if "align_x" in obj_cfg:
+        try:
+            curve.align_x = str(obj_cfg["align_x"])
+        except Exception:
+            pass
+    if "align_y" in obj_cfg:
+        try:
+            curve.align_y = str(obj_cfg["align_y"])
+        except Exception:
+            pass
+
+    font_rel = obj_cfg.get("font", style.get("font"))
+    if font_rel:
+        font_path = abspath_from_manifest(manifest_path, font_rel)
+        if os.path.exists(font_path):
+            try:
+                curve.font = bpy.data.fonts.load(font_path, check_existing=True)
+            except Exception:
+                pass
+
+    rgba = obj_cfg.get("color_rgba", style.get("color_rgba"))
+    if rgba:
+        rough = float(obj_cfg.get("roughness", style.get("roughness", 0.5)))
+        spec = float(obj_cfg.get("specular", style.get("specular", 0.2)))
+        metal = float(obj_cfg.get("metallic", style.get("metallic", 0.0)))
+        mat = ensure_material_principled("MAT_" + (style_name or name), color_rgba=rgba, roughness=rough, specular=spec, metallic=metal)
+        if obj.data.materials:
+            obj.data.materials[0] = mat
+        else:
+            obj.data.materials.append(mat)
+
+    space = str(obj_cfg.get("space", "WORLD")).upper()
+    if space == "POSTER":
+        place_on_poster_plane(
+            obj,
+            cam_obj,
+            poster_plane_distance,
+            obj_cfg.get("poster_xy_mm", [0.0, 0.0]),
+            float(obj_cfg.get("z_mm", 0.0)),
+        )
+    else:
+        set_world_transform(
+            obj,
+            obj_cfg.get("location_mm", [0.0, 0.0, 0.0]),
+            obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0]),
+            obj_cfg.get("scale", [1.0, 1.0, 1.0]),
+        )
+
+    return obj
+
+
+# ----------------------------
+# Asset import (.blend library collections)
+# ----------------------------
+
+def _list_collections_in_blend(blend_path: str, *, link: bool = True) -> List[str]:
+    blend_path = str(Path(blend_path).resolve())
+    with bpy.data.libraries.load(blend_path, link=link) as (data_from, data_to):
+        return list(getattr(data_from, "collections", []))
+
+
+def _load_collection_from_blend(blend_path: str, collection_name: str, *, link: bool) -> Optional[bpy.types.Collection]:
+    blend_path = str(Path(blend_path).resolve())
+    with bpy.data.libraries.load(blend_path, link=link) as (data_from, data_to):
+        if collection_name not in getattr(data_from, "collections", []):
+            return None
+        data_to.collections = [collection_name]
+    return data_to.collections[0]
+
+
+def load_collection_from_blend(
+    blend_path: str,
+    *,
+    collection_name: Optional[str] = None,
+    fallback_names: Sequence[str] = (),
+    link: bool = True,
+) -> bpy.types.Collection:
+    """Load a Collection datablock from an external .blend file, with robust fallbacks."""
+    blend_path = str(Path(blend_path).resolve())
+    available = _list_collections_in_blend(blend_path, link=link)
+    if not available:
+        raise RuntimeError(f"No collections found in blend library: {blend_path}")
+
+    candidates: List[str] = []
+    if collection_name:
+        candidates.append(str(collection_name))
+    for n in fallback_names:
+        if n:
+            candidates.append(str(n))
+
+    export_like = [n for n in available if n.startswith("EXPORT_")]
+    for n in sorted(export_like):
+        if n not in candidates:
+            candidates.append(n)
+
+    if "Collection" in available and "Collection" not in candidates:
+        candidates.append("Collection")
+    for n in available:
+        if n not in candidates:
+            candidates.append(n)
+
+    picked = None
+    picked_name = None
+    for cand in candidates:
+        coll = _load_collection_from_blend(blend_path, cand, link=link)
+        if coll is None:
+            continue
+        # Prefer non-empty
+        try:
+            n_objs = len(getattr(coll, "all_objects", []))
+        except Exception:
+            n_objs = 0
+        if n_objs > 0:
+            picked = coll
+            picked_name = cand
+            break
+        if picked is None:
+            picked = coll
+            picked_name = cand
+
+    if picked is None:
+        raise RuntimeError(f"Failed to load any collection from {blend_path}")
+
+    print(f"[blendlib] Loaded collection '{picked.name}' (picked='{picked_name}', requested='{collection_name}') from: {blend_path}")
+    return picked
+
+
+def ensure_imported_blend_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path) -> bpy.types.Object:
+    """Instance a collection from an external .blend file into the scene."""
+    name = obj_cfg["name"]
+    parent_col_name = obj_cfg.get("collection", "WORLD")
+
+    parent_col = ensure_collection(parent_col_name)
+    helpers_col = ensure_collection("HELPERS")
+    asset_col = ensure_child_collection(parent_col, f"ASSET_{name}")
+
+    # Root transform handle (kept in HELPERS)
+    root = ensure_empty(name, [0.0, 0.0, 0.0])
+    root.hide_render = True
+    move_object_to_collection(root, helpers_col)
+
+    # Clear previous instancers/objects in the ASSET collection
+    remove_collection_objects(asset_col)
+
+    blend_path = abspath_from_manifest(manifest_path, obj_cfg.get("filepath", obj_cfg.get("path", "")))
+    if not os.path.exists(blend_path):
+        raise FileNotFoundError(f"Blend asset file not found: {blend_path}")
+
+    requested = obj_cfg.get("blend_collection", None)
+    link = bool(obj_cfg.get("link", True))
+    fallback = [f"EXPORT_{name}", name, "Collection"]
+
+    coll = load_collection_from_blend(
+        blend_path,
+        collection_name=str(requested) if requested is not None else None,
+        fallback_names=fallback,
+        link=link,
+    )
+
+    inst_name = f"INST_{name}"
+    old_inst = bpy.data.objects.get(inst_name)
+    if old_inst is not None:
+        try:
+            bpy.data.objects.remove(old_inst, do_unlink=True)
+        except Exception:
+            pass
+
+    inst = bpy.data.objects.new(inst_name, None)
+    bpy.context.scene.collection.objects.link(inst)
+    move_object_to_collection(inst, asset_col)
+
+    inst.empty_display_type = 'PLAIN_AXES'
+    inst.instance_type = 'COLLECTION'
+    inst.instance_collection = coll
+
+    inst.parent = root
+    try:
+        inst.matrix_parent_inverse = root.matrix_world.inverted()
+    except Exception:
+        pass
+
+    loc = obj_cfg.get("location_mm", [0.0, 0.0, 0.0])
+    rot = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
+    sc = obj_cfg.get("scale", [1.0, 1.0, 1.0])
+    import_scale = float(obj_cfg.get("import_scale", 1.0))
+    sc2 = [float(sc[0]) * import_scale, float(sc[1]) * import_scale, float(sc[2]) * import_scale]
+    set_world_transform(root, loc, rot, sc2)
+
+    return root
+
 # ----------------------------
 # Main entrypoint
 # ----------------------------
@@ -1062,7 +1285,12 @@ def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] =
         collection_name = obj_cfg.get("collection", "WORLD")
         col = ensure_collection(collection_name)
 
-        if kind == "image_plane":
+        if kind == "text":
+            styles = cfg.get("styles", {})
+            obj = ensure_text_object(obj_cfg, manifest_path, styles, cam, plane_d_mm)
+            move_object_to_collection(obj, col)
+
+        elif kind == "image_plane":
             obj = ensure_image_plane(obj_cfg, manifest_path, cam, plane_d_mm)
             move_object_to_collection(obj, col)
 
@@ -1075,6 +1303,9 @@ def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] =
 
         elif kind == "import_wrl":
             ensure_imported_asset(obj_cfg, manifest_path, importer="wrl")
+
+        elif kind in ("import_blend", "instance_blend_collection"):
+            ensure_imported_blend_asset(obj_cfg, manifest_path)
 
         else:
             print(f"[WARN] Unknown kind '{kind}' for object '{obj_cfg.get('name')}'")
