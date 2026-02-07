@@ -4,10 +4,13 @@
     "MAT_Aluminum_Brushed",
     "MAT_Aluminum_Cast_Matte",
     "MAT_Aluminum_Machined",
+    "MAT_Gold_Polished",
     "MAT_Paint_Black_PowderCoat",
     "MAT_Paint_Red_Gloss",
     "MAT_Plastic_Black",
+    "MAT_Plastic_Green",
     "MAT_Plastic_Grey",
+    "MAT_Plastic_Red",
     "MAT_Plastic_White",
     "MAT_Rubber_Black",
     "MAT_Steel_Black_Oxide",
@@ -238,6 +241,66 @@
       "ior": 1.45,
       "coat": 0.05,
       "coat_roughness": 0.3
+    },
+    "MAT_Gold_Polished": {
+      "description": "Polished gold metal (bright, fairly smooth).",
+      "tags": [
+        "metal",
+        "gold"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        1.0,
+        0.77,
+        0.34,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.14,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Plastic_Green": {
+      "description": "Green plastic (slightly glossy; good for housings/buttons).",
+      "tags": [
+        "plastic",
+        "green"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.06,
+        0.45,
+        0.12,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.42,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.08,
+      "coat_roughness": 0.25
+    },
+    "MAT_Plastic_Red": {
+      "description": "Red plastic (slightly glossy; distinct from MAT_Paint_Red_Gloss).",
+      "tags": [
+        "plastic",
+        "red"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.65,
+        0.06,
+        0.06,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.4,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.1,
+      "coat_roughness": 0.22
     }
   }
 }
