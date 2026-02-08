@@ -13,6 +13,7 @@
     "MAT_Plastic_Red",
     "MAT_Plastic_White",
     "MAT_Rubber_Black",
+    "MAT_Rubber_Blue",
     "MAT_Steel_Black_Oxide",
     "MAT_Steel_Polished"
   ],
@@ -301,6 +302,26 @@
       "ior": 1.45,
       "coat": 0.1,
       "coat_roughness": 0.22
+    },
+    "MAT_Rubber_Blue": {
+      "description": "Blue rubber (high roughness, low specular).",
+      "tags": [
+        "rubber",
+        "blue"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.05,
+        0.12,
+        0.55,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.82,
+      "specular": 0.2,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.5
     }
   }
 }

@@ -208,6 +208,19 @@ MATERIAL_SPECS: Dict[str, Dict[str, Any]] = {
                 "coat": 0.10,
                 "coat_roughness": 0.22,
         },
+        "MAT_Rubber_Blue": {
+                "description": "Blue rubber (high roughness, low specular).",
+                "tags": ["rubber", "blue"],
+                "shader": "principled",
+                # A slightly muted blue reads more like rubber than “toy plastic”
+                "base_color_rgba": [0.05, 0.12, 0.55, 1.0],
+                "metallic": 0.0,
+                "roughness": 0.82,
+                "specular": 0.20,
+                "ior": 1.45,
+                "coat": 0.00,
+                "coat_roughness": 0.50,
+        },
 }
 
 # ----------------------------
