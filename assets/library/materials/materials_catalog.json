@@ -1,21 +1,36 @@
 {
   "library_blend": "assets/library/materials/materials.blend",
   "materials_in_file": [
+    "MAT_Acrylic_Clear_Frosted",
+    "MAT_Acrylic_Clear_LaserCut",
+    "MAT_Acrylic_Clear_LaserCut_EdgePolished",
     "MAT_Aluminum_Brushed",
     "MAT_Aluminum_Cast_Matte",
     "MAT_Aluminum_Machined",
+    "MAT_Ceramic_Capacitor_Beige",
+    "MAT_Copper_Oxidized",
+    "MAT_Epoxy_Black_IC",
+    "MAT_Gold_ENIG_Satin",
     "MAT_Gold_Polished",
+    "MAT_PCB_FR4_Edge",
+    "MAT_PCB_Silkscreen_White",
+    "MAT_PCB_SolderMask_Green_Dark",
     "MAT_Paint_Black_PowderCoat",
     "MAT_Paint_Red_Gloss",
     "MAT_Plastic_Black",
+    "MAT_Plastic_Clear",
     "MAT_Plastic_Green",
+    "MAT_Plastic_Green_TerminalBlock",
     "MAT_Plastic_Grey",
     "MAT_Plastic_Red",
     "MAT_Plastic_White",
+    "MAT_Resistor_Charcoal",
     "MAT_Rubber_Black",
     "MAT_Rubber_Blue",
+    "MAT_Solder_Tin_Satin",
     "MAT_Steel_Black_Oxide",
-    "MAT_Steel_Polished"
+    "MAT_Steel_Polished",
+    "MAT_Steel_Stainless_Brushed"
   ],
   "material_specs": {
     "MAT_Plastic_Black": {
@@ -322,6 +337,332 @@
       "ior": 1.45,
       "coat": 0.0,
       "coat_roughness": 0.5
+    },
+    "MAT_Acrylic_Clear_LaserCut": {
+      "description": "Clear cast acrylic (PMMA) for laser-cut parts. Polished, realistic IOR, slight cool cast.",
+      "tags": [
+        "acrylic",
+        "pmma",
+        "clear",
+        "laser-cut",
+        "plastic"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.98,
+        0.99,
+        1.0,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.035,
+      "specular": 0.5,
+      "ior": 1.49,
+      "transmission": 1.0,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Acrylic_Clear_LaserCut_EdgePolished": {
+      "description": "Optional edge-only acrylic for laser-cut edges (slightly lower roughness / more sparkle).",
+      "tags": [
+        "acrylic",
+        "edge",
+        "laser-cut",
+        "clear"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.98,
+        0.99,
+        1.0,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.02,
+      "specular": 0.5,
+      "ior": 1.49,
+      "transmission": 1.0,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Acrylic_Clear_Frosted": {
+      "description": "Frosted/matte clear acrylic (light diffusion).",
+      "tags": [
+        "acrylic",
+        "frosted",
+        "matte",
+        "clear"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.98,
+        0.99,
+        1.0,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.45,
+      "specular": 0.5,
+      "ior": 1.49,
+      "transmission": 1.0,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_PCB_SolderMask_Green_Dark": {
+      "description": "Dark green solder mask (olive). Slight clearcoat to mimic glossy polymer coating.",
+      "tags": [
+        "pcb",
+        "soldermask",
+        "green"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.055,
+        0.135,
+        0.04,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.42,
+      "specular": 0.5,
+      "ior": 1.48,
+      "coat": 0.18,
+      "coat_roughness": 0.14
+    },
+    "MAT_PCB_FR4_Edge": {
+      "description": "FR4 glass-epoxy edge (board sides). Use on PCB side faces and inside cutouts if exposed.",
+      "tags": [
+        "pcb",
+        "fr4",
+        "substrate"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.26,
+        0.17,
+        0.08,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.75,
+      "specular": 0.35,
+      "ior": 1.55,
+      "coat": 0.0,
+      "coat_roughness": 0.3
+    },
+    "MAT_PCB_Silkscreen_White": {
+      "description": "White silkscreen ink (matte). Good for text/lines if you have separate geometry.",
+      "tags": [
+        "pcb",
+        "silkscreen",
+        "ink",
+        "white"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.85,
+        0.85,
+        0.85,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.68,
+      "specular": 0.45,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.25
+    },
+    "MAT_Gold_ENIG_Satin": {
+      "description": "ENIG-style gold plating (pads/testpoints). Less mirror-like than polished gold.",
+      "tags": [
+        "metal",
+        "gold",
+        "enig",
+        "pcb"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        1.0,
+        0.7,
+        0.25,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.28,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Copper_Oxidized": {
+      "description": "Oxidized copper (for exposed copper features, if any).",
+      "tags": [
+        "metal",
+        "copper"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.9,
+        0.38,
+        0.25,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.42,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Solder_Tin_Satin": {
+      "description": "Solder (tin/SAC) satin. Use for solder fillets/joints if modeled.",
+      "tags": [
+        "metal",
+        "solder",
+        "tin"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.68,
+        0.7,
+        0.73,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.36,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Epoxy_Black_IC": {
+      "description": "IC package epoxy (matte black). Good for QFP/QFN/SOIC bodies.",
+      "tags": [
+        "electronics",
+        "ic",
+        "epoxy",
+        "black"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.02,
+        0.02,
+        0.02,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.68,
+      "specular": 0.35,
+      "ior": 1.5,
+      "coat": 0.0,
+      "coat_roughness": 0.25
+    },
+    "MAT_Ceramic_Capacitor_Beige": {
+      "description": "Ceramic capacitor body (MLCC) beige/off-white.",
+      "tags": [
+        "electronics",
+        "ceramic",
+        "capacitor"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.78,
+        0.74,
+        0.62,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.42,
+      "specular": 0.5,
+      "ior": 1.55,
+      "coat": 0.02,
+      "coat_roughness": 0.35
+    },
+    "MAT_Resistor_Charcoal": {
+      "description": "SMD resistor body (dark charcoal).",
+      "tags": [
+        "electronics",
+        "resistor"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.09,
+        0.09,
+        0.1,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.55,
+      "specular": 0.45,
+      "ior": 1.5,
+      "coat": 0.0,
+      "coat_roughness": 0.3
+    },
+    "MAT_Plastic_Green_TerminalBlock": {
+      "description": "Bright green terminal-block plastic (satin). Tuned toward common Phoenix-style connectors.",
+      "tags": [
+        "plastic",
+        "green",
+        "connector",
+        "terminal"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.35,
+        0.7,
+        0.35,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.48,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.1,
+      "coat_roughness": 0.25
+    },
+    "MAT_Steel_Stainless_Brushed": {
+      "description": "Brushed stainless steel (USB shells, shields).",
+      "tags": [
+        "metal",
+        "steel",
+        "stainless",
+        "brushed"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        0.74,
+        0.75,
+        0.77,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 0.32,
+      "specular": 0.5,
+      "ior": 1.45,
+      "coat": 0.0,
+      "coat_roughness": 0.2
+    },
+    "MAT_Plastic_Clear": {
+      "description": "Clear plastic (LED lenses, lightpipes). Use with proper lighting; looks best in Cycles.",
+      "tags": [
+        "plastic",
+        "clear",
+        "transparent"
+      ],
+      "shader": "principled",
+      "base_color_rgba": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.04,
+      "specular": 0.5,
+      "ior": 1.49,
+      "coat": 0.0,
+      "coat_roughness": 0.2,
+      "transmission": 1.0
     }
   }
 }
