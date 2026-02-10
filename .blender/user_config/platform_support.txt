@@ -1,1 +1,2 @@
 {AMD/AMD Radeon RX 7600 (radeonsi, navi33, LLVM 19.1.7, DRM 3.61, 6.12.63+deb13-amd64)/4.6 (Core Profile) Mesa 25.0.7-2}=SUPPORTED
+{AMD/Radeon RX 580 Series (radeonsi, polaris10, ACO, DRM 3.61, 6.12.63+deb13-amd64)/4.6 (Core Profile) Mesa 25.0.7-2}=SUPPORTED
