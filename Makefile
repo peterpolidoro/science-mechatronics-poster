@@ -206,3 +206,17 @@ materials-link-then-bake: dirs
 .PHONY: clean
 clean:
 	rm -rf "$(OUT_DIR)"/*
+
+# Build/update the electrical-mechanical assets
+.PHONY: motion-blend
+motion-blend:
+	$(BLENDER_BG) --python assets/build/electrical_mechanical/build.py -- \
+	assets/build/electrical_mechanical/motion-manifest.json \
+	--output assets/compiled/blend/motion.blend
+
+.PHONY: motion-blend-debug
+motion-blend-debug:
+	$(BLENDER_BG) -b assets/compiled/blend/motion.blend \
+	--python tools/electrical_mechanical_debug_dump.py -- \
+	--manifest assets/build/electrical_mechanical/motion-manifest.json \
+	--out /tmp/motion_debug.json

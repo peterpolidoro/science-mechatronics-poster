@@ -1,20 +1,23 @@
 """assets/build/electrical_mechanical/build.py
 
-Build an "electrical-mechanical corner" asset .blend from a JSON manifest.
+Build a reusable "electrical-mechanical corner" .blend asset for the poster.
 
-The asset coordinate system:
-- (0,0,0) is the corner.
-- XZ plane (Y=0) is the LEFT wall.
-- YZ plane (X=0) is the RIGHT wall.
-- XY plane (Z=0) is the floor.
-- With a camera placed in the (+1,+1,+1) direction looking at the origin:
-  +Z appears UP, +X projects down-left, +Y projects down-right.
+Key features:
+- Uses *PNG* schematics (image planes), not SVG.
+- Places one schematic on the XZ plane and one on the YZ plane.
+  - In both cases, the *min corner* of the image plane coincides with (0,0,0)
+    and the plane grows into +X/+Z or +Y/+Z.
+- Optionally instances up to 4 collections from external .blend files on the XY plane:
+  - left electrical + left mechanical
+  - right electrical + right mechanical
+- Robust to missing/disabled assets in the manifest: warnings are printed and
+  the build continues.
 
-Usage (headless build):
+Run (from repo root):
+
   blender -b --factory-startup --python assets/build/electrical_mechanical/build.py -- \
     assets/build/electrical_mechanical/manifest.json
 
-The builder saves the output .blend path defined by manifest["output"]["blend_path"].
 """
 
 from __future__ import annotations
@@ -22,9 +25,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import bpy
 from mathutils import Euler, Vector
@@ -40,649 +45,864 @@ def argv_after_dashes() -> List[str]:
     return []
 
 
-def parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Build an electrical-mechanical corner .blend from a JSON manifest"
-    )
-    p.add_argument(
-        "manifest",
-        nargs="?",
-        default=None,
-        help="Path to manifest.json (defaults to the manifest.json next to this script)",
-    )
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Build an electrical-mechanical corner .blend from manifest")
+    p.add_argument("manifest", help="Path to assets/build/electrical_mechanical/manifest.json")
     p.add_argument(
         "--output",
         default=None,
-        help="Override output .blend filepath (otherwise uses manifest.output.blend_path)",
+        help="Optional override for output .blend path (otherwise uses manifest['output']['blend_path'])",
     )
-    return p.parse_args(list(argv))
+    p.add_argument(
+        "--no-pack-images",
+        action="store_true",
+        help="Disable packing images even if manifest output.pack_images=true",
+    )
+    p.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="Do not reset Blender to an empty file at start (advanced/debug).",
+    )
+    return p.parse_args(argv_after_dashes())
 
 
 # ----------------------------
-# Repo + path resolution
+# Logging
 # ----------------------------
 
-def find_repo_root(start: Path) -> Path:
-    """Find repo root by walking upward looking for Makefile + poster/."""
-    start = start.resolve()
-    for p in [start] + list(start.parents):
-        if (p / "Makefile").exists() and (p / "poster").is_dir():
-            return p
-    return start.parents[0]
+def info(msg: str) -> None:
+    print(f"[electro_mech] {msg}")
 
 
-def resolve_path(manifest_path: Path, maybe_rel: str | Path) -> str:
-    """Resolve paths referenced by manifests.
+def warn(msg: str) -> None:
+    print(f"[electro_mech][WARN] {msg}")
 
-    Strategy:
-    - Absolute paths are returned as-is.
-    - Try relative to the manifest directory.
-    - Try relative to the repo root.
-    - Finally, try each ancestor of the manifest directory.
 
-    This is more flexible than poster/blendlib.py's resolver because our manifests
-    live under assets/build/..., not poster/.
+# ----------------------------
+# Manifest + path helpers
+# ----------------------------
+
+def load_json(path: str | Path) -> Dict[str, Any]:
+    p = Path(path)
+    with p.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _repo_root_from_manifest(manifest_path: Path) -> Path:
+    """Best-effort repo root detection.
+
+    We expect this builder manifest lives at:
+      <repo>/assets/build/electrical_mechanical/manifest.json
+
+    So repo root is 3 parents up from manifest dir.
+
+    If the structure is different, we fall back to walking upwards and
+    picking the first parent that contains an "assets" dir.
     """
+    mp = manifest_path.resolve()
+    # Common case
+    try:
+        cand = mp.parent.parent.parent.parent
+        if (cand / "assets").exists():
+            return cand
+    except Exception:
+        pass
+
+    # Fallback: walk up until we find an assets/ directory
+    for parent in mp.parents:
+        if (parent / "assets").exists():
+            return parent
+    return mp.parent
+
+
+def abspath_from_manifest(manifest_path: str | Path, maybe_rel: str | Path) -> str:
+    """Resolve a path referenced by the manifest.
+
+    - Absolute paths are returned as-is.
+    - Relative paths are tried against:
+        1) manifest directory
+        2) manifest parent directory
+        3) manifest grandparent directory
+        4) repo root (best-effort)
+
+    Returns the *best candidate*, even if it doesn't exist.
+    """
+    mp = Path(manifest_path).resolve()
     p = Path(maybe_rel)
+
     if p.is_absolute():
         return str(p)
 
-    mp = manifest_path.resolve()
-    manifest_dir = mp.parent
+    bases: List[Path] = [mp.parent, mp.parent.parent, mp.parent.parent.parent]
+    repo_root = _repo_root_from_manifest(mp)
+    if repo_root not in bases:
+        bases.append(repo_root)
 
-    cand = (manifest_dir / p).resolve()
-    if cand.exists():
-        return str(cand)
+    for base in bases:
+        cand = (base / p).resolve()
+        if cand.exists():
+            return str(cand)
 
-    repo_root = find_repo_root(manifest_dir)
-    cand2 = (repo_root / p).resolve()
-    if cand2.exists():
-        return str(cand2)
-
-    for anc in manifest_dir.parents:
-        cand3 = (anc / p).resolve()
-        if cand3.exists():
-            return str(cand3)
-
-    # Best-effort fallback (useful for error messages)
-    return str(cand2)
-
-
-# ----------------------------
-# Import poster/blendlib utilities
-# ----------------------------
-
-REPO_ROOT = find_repo_root(Path(__file__).resolve())
-POSTER_DIR = REPO_ROOT / "poster"
-if str(POSTER_DIR) not in sys.path:
-    sys.path.insert(0, str(POSTER_DIR))
-
-# Reuse the project's battle-tested collection + material helpers.
-from blendlib import (  # type: ignore
-    apply_units,
-    apply_world_settings,
-    ensure_camera,
-    ensure_child_collection,
-    ensure_collection,
-    ensure_empty,
-    ensure_material_principled,
-    load_collection_from_blend,
-    move_object_to_collection,
-    remove_startup_objects,
-    set_world_transform,
-)
-
-
-# ----------------------------
-# Blender helpers
-# ----------------------------
-
-def ensure_addon_enabled(module: str) -> None:
+    # If nothing exists yet (common for output paths), prefer repo-root-relative.
     try:
-        bpy.ops.preferences.addon_enable(module=module)
+        return str((repo_root / p).resolve())
+    except Exception:
+        return str((mp.parent / p).resolve())
+
+
+def merged_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """Shallow merge base + override."""
+    out = dict(base) if isinstance(base, dict) else {}
+    if isinstance(override, dict):
+        out.update(override)
+    return out
+
+
+# ----------------------------
+# Scene + collection utilities
+# ----------------------------
+
+def reset_to_empty_file() -> None:
+    """Reset Blender to a known-empty state."""
+    try:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+    except Exception as e:
+        warn(f"Could not read_factory_settings(use_empty=True): {e!r}")
+
+
+def apply_units(cfg: Dict[str, Any]) -> None:
+    u = cfg.get("units", {}) if isinstance(cfg, dict) else {}
+    scene = bpy.context.scene
+    try:
+        scene.unit_settings.system = u.get("system", "METRIC")
+    except Exception:
+        pass
+    try:
+        scene.unit_settings.length_unit = u.get("length_unit", "MILLIMETERS")
+    except Exception:
+        pass
+    try:
+        scene.unit_settings.scale_length = float(u.get("scale_length", 0.001))
     except Exception:
         pass
 
 
-def ensure_track_to(
-    obj: bpy.types.Object,
-    target: bpy.types.Object,
-    *,
-    track_axis: str = "TRACK_NEGATIVE_Z",
-    up_axis: str = "UP_Y",
-) -> None:
-    c = None
-    for cc in obj.constraints:
-        if cc.type == "TRACK_TO":
-            c = cc
-            break
-    if c is None:
-        c = obj.constraints.new(type="TRACK_TO")
-    c.target = target
-    try:
-        c.track_axis = track_axis
-    except Exception:
-        c.track_axis = "TRACK_NEGATIVE_Z"
-    try:
-        c.up_axis = up_axis
-    except Exception:
-        c.up_axis = "UP_Y"
+def ensure_collection(name: str, parent: Optional[bpy.types.Collection] = None) -> bpy.types.Collection:
+    col = bpy.data.collections.get(name)
+    if col is None:
+        col = bpy.data.collections.new(name)
 
+    if parent is None:
+        parent = bpy.context.scene.collection
 
-def coerce_scale(scale: Any) -> Tuple[float, float, float]:
-    """Accept either scalar scale or [sx,sy,sz]."""
-    if isinstance(scale, (int, float)):
-        s = float(scale)
-        return (s, s, s)
-    if isinstance(scale, (list, tuple)) and len(scale) == 3:
-        return (float(scale[0]), float(scale[1]), float(scale[2]))
-    return (1.0, 1.0, 1.0)
-
-
-def bbox_world(objs: Iterable[bpy.types.Object]) -> Tuple[Vector, Vector]:
-    """World-space AABB for a set of objects, using their bound_box."""
-    inf = 1.0e30
-    vmin = Vector((inf, inf, inf))
-    vmax = Vector((-inf, -inf, -inf))
-
-    any_obj = False
-    for obj in objs:
-        if obj.type in {"EMPTY", "CAMERA", "LIGHT"}:
-            continue
+    if parent.children.get(col.name) is None:
         try:
-            bb = obj.bound_box
-        except Exception:
-            continue
-        if not bb:
-            continue
-        any_obj = True
-        mw = obj.matrix_world
-        for corner in bb:
-            v = mw @ Vector(corner)
-            vmin.x = min(vmin.x, v.x)
-            vmin.y = min(vmin.y, v.y)
-            vmin.z = min(vmin.z, v.z)
-            vmax.x = max(vmax.x, v.x)
-            vmax.y = max(vmax.y, v.y)
-            vmax.z = max(vmax.z, v.z)
-
-    if not any_obj:
-        return Vector((0.0, 0.0, 0.0)), Vector((0.0, 0.0, 0.0))
-
-    return vmin, vmax
-
-
-def delete_collection_recursive(coll: bpy.types.Collection) -> None:
-    """Delete a collection, its child collections, and objects in it.
-
-    Warning: Only call on collections you *own* (local to this file).
-    """
-    for child in list(coll.children):
-        delete_collection_recursive(child)
-
-    for obj in list(coll.objects):
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
+            parent.children.link(col)
         except Exception:
             pass
 
-    # Unlink from scene root if present
-    try:
-        if bpy.context.scene.collection.children.get(coll.name):
-            bpy.context.scene.collection.children.unlink(coll)
-    except Exception:
-        pass
+    return col
 
-    # Unlink from any parent collections
-    for parent in list(bpy.data.collections):
+
+def ensure_empty(name: str, *, location_mm: Sequence[float] = (0.0, 0.0, 0.0)) -> bpy.types.Object:
+    obj = bpy.data.objects.get(name)
+    if obj is None:
+        obj = bpy.data.objects.new(name, None)
+        obj.empty_display_type = "PLAIN_AXES"
+        bpy.context.scene.collection.objects.link(obj)
+    obj.location = Vector([float(location_mm[0]), float(location_mm[1]), float(location_mm[2])])
+    return obj
+
+
+def move_object_to_collection(obj: bpy.types.Object, col: bpy.types.Collection) -> None:
+    for c in list(obj.users_collection):
         try:
-            if parent.children.get(coll.name):
-                parent.children.unlink(coll)
+            c.objects.unlink(obj)
+        except Exception:
+            pass
+    if col.objects.get(obj.name) is None:
+        try:
+            col.objects.link(obj)
         except Exception:
             pass
 
+
+# ----------------------------
+# Materials (PNG schematics)
+# ----------------------------
+
+def _set_material_transparency(mat: bpy.types.Material, *, method: str = "BLENDED") -> None:
+    """Handle Blender 4/5 transparency APIs with fallbacks."""
+    m = str(method).upper()
+    if hasattr(mat, "surface_render_method"):
+        try:
+            mat.surface_render_method = m  # 'OPAQUE','DITHERED','BLENDED','CLIP'
+        except Exception:
+            pass
+    elif hasattr(mat, "blend_method"):
+        legacy = {"OPAQUE": "OPAQUE", "BLENDED": "BLEND", "CLIP": "CLIP"}.get(m, "BLEND")
+        try:
+            mat.blend_method = legacy
+        except Exception:
+            pass
+    if hasattr(mat, "alpha_threshold"):
+        try:
+            mat.alpha_threshold = 0.5
+        except Exception:
+            pass
+
+
+def ensure_material_image_emission(
+    name: str,
+    image_path: str,
+    *,
+    emission_strength: float = 1.0,
+    interpolation: str = "Cubic",
+) -> bpy.types.Material:
+    """Unlit image material (Emission) with alpha support."""
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+
+    nt = mat.node_tree
+    nodes = nt.nodes
+    links = nt.links
+
+    # Clear nodes for deterministic rebuild
+    for n in list(nodes):
+        nodes.remove(n)
+
+    out = nodes.new("ShaderNodeOutputMaterial")
+    out.location = (520, 0)
+
+    texcoord = nodes.new("ShaderNodeTexCoord")
+    texcoord.location = (-840, 0)
+
+    tex = nodes.new("ShaderNodeTexImage")
+    tex.location = (-560, 0)
+
+    img = bpy.data.images.load(image_path, check_existing=True)
+    tex.image = img
+
+    # Texture filtering
     try:
-        bpy.data.collections.remove(coll)
+        tex.interpolation = str(interpolation)
     except Exception:
         pass
 
+    # Alpha handling
+    try:
+        img.alpha_mode = "STRAIGHT"
+    except Exception:
+        pass
+
+    emission = nodes.new("ShaderNodeEmission")
+    emission.location = (-220, 60)
+    emission.inputs["Strength"].default_value = float(emission_strength)
+
+    transparent = nodes.new("ShaderNodeBsdfTransparent")
+    transparent.location = (-220, -140)
+
+    mix = nodes.new("ShaderNodeMixShader")
+    mix.location = (140, 0)
+
+    # Explicitly use UVs
+    if "UV" in texcoord.outputs and "Vector" in tex.inputs:
+        links.new(texcoord.outputs["UV"], tex.inputs["Vector"])
+
+    links.new(tex.outputs["Color"], emission.inputs["Color"])
+
+    # Use alpha to mix transparent vs emission
+    if "Alpha" in tex.outputs:
+        links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+    links.new(transparent.outputs["BSDF"], mix.inputs[1])
+    links.new(emission.outputs["Emission"], mix.inputs[2])
+
+    links.new(mix.outputs["Shader"], out.inputs["Surface"])
+
+    _set_material_transparency(mat, method="BLENDED")
+    return mat
+
 
 # ----------------------------
-# SVG schematic import
+# Corner image planes
 # ----------------------------
 
-def plane_rotation_for_schematic(plane: str) -> Euler:
-    """Return rotation that maps imported SVG (XY plane) to desired plane."""
-    p = plane.upper().strip()
-    if p == "XZ":
-        # Map SVG +Y to world +Z; keep plane at Y=0.
-        return Euler((math.radians(90.0), 0.0, 0.0), "XYZ")
-    if p == "YZ":
-        # First XY -> XZ, then X axis -> Y axis.
-        return Euler((math.radians(90.0), 0.0, math.radians(90.0)), "XYZ")
-    raise ValueError(f"Unsupported schematic plane: {plane!r} (expected 'XZ' or 'YZ')")
-
-
-def import_svg_as_curves(svg_path: str) -> List[bpy.types.Object]:
-    """Import SVG and return newly-created objects."""
-    ensure_addon_enabled("io_curve_svg")
-
-    before = {o.name for o in bpy.data.objects}
-
-    # The import operator usually selects imported objects.
-    bpy.ops.object.select_all(action="DESELECT")
-    bpy.ops.import_curve.svg(filepath=svg_path)
-
-    after = {o.name for o in bpy.data.objects}
-    new_names = sorted(after - before)
-    return [bpy.data.objects[n] for n in new_names if n in bpy.data.objects]
-
-
-def configure_curve_object(
-    obj: bpy.types.Object,
-    *,
-    extrude_mm: float,
-    bevel_depth_mm: float,
-    bevel_resolution: int,
-    fill_mode: str,
-    use_fill_caps: bool,
-    mat: Optional[bpy.types.Material],
-) -> None:
-    if obj.type != "CURVE":
+def _ensure_uv_layer(mesh: bpy.types.Mesh, uvs: Sequence[Tuple[float, float]]) -> None:
+    if not mesh.uv_layers:
+        mesh.uv_layers.new(name="UVMap")
+    uv_layer = mesh.uv_layers.active
+    if uv_layer is None:
         return
 
-    c = obj.data
-    try:
-        c.dimensions = "2D"
-    except Exception:
-        pass
+    # For a single-quad plane, we expect 4 loops
+    for poly in mesh.polygons:
+        if len(poly.loop_indices) != 4:
+            continue
+        for li, uv in zip(poly.loop_indices, uvs):
+            uv_layer.data[li].uv = uv
 
-    try:
-        c.fill_mode = fill_mode
-    except Exception:
-        pass
 
-    try:
-        c.use_fill_caps = bool(use_fill_caps)
-    except Exception:
-        pass
+def _make_corner_plane_mesh(
+    mesh_name: str,
+    *,
+    plane: str,
+    width_mm: float,
+    height_mm: float,
+    flip_u: bool,
+    flip_v: bool,
+) -> bpy.types.Mesh:
+    """Create a plane mesh with one corner at the origin.
 
-    # Curve geometry (subtle 3D)
-    try:
-        c.extrude = float(extrude_mm)
-    except Exception:
-        pass
+    - plane="XZ": vertices span +X and +Z at y=0
+    - plane="YZ": vertices span +Y and +Z at x=0
+    """
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
 
+    w = float(width_mm)
+    h = float(height_mm)
+
+    plane_u = str(plane).upper()
+    if plane_u == "XZ":
+        verts = [(0.0, 0.0, 0.0), (w, 0.0, 0.0), (w, 0.0, h), (0.0, 0.0, h)]
+    elif plane_u == "YZ":
+        verts = [(0.0, 0.0, 0.0), (0.0, w, 0.0), (0.0, w, h), (0.0, 0.0, h)]
+    else:
+        raise ValueError(f"Unknown plane {plane!r} (expected 'XZ' or 'YZ')")
+
+    faces = [(0, 1, 2, 3)]
+
+    mesh.clear_geometry()
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+    # UVs: map origin corner -> (0,0)
+    uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    if flip_u:
+        uvs = [(1.0 - u, v) for (u, v) in uvs]
+    if flip_v:
+        uvs = [(u, 1.0 - v) for (u, v) in uvs]
+
+    _ensure_uv_layer(mesh, uvs)
+    return mesh
+
+
+def create_schematic_plane(
+    name: str,
+    *,
+    image_path: str,
+    plane: str,
+    height_mm: float,
+    width_mm: Optional[float],
+    scale: float,
+    emission_strength: float,
+    interpolation: str,
+    flip_u: bool,
+    flip_v: bool,
+    parent_obj: Optional[bpy.types.Object],
+    target_collection: bpy.types.Collection,
+) -> Optional[bpy.types.Object]:
+    """Create a schematic image plane. Returns the created object, or None if missing."""
+
+    if not image_path:
+        warn(f"{name}: no image_path specified; skipping")
+        return None
+
+    if not os.path.exists(image_path):
+        warn(f"{name}: image not found: {image_path}")
+        return None
+
+    # Load image to compute aspect ratio (and for material)
     try:
-        c.bevel_depth = float(bevel_depth_mm)
-        c.bevel_resolution = int(bevel_resolution)
-    except Exception:
-        pass
+        img = bpy.data.images.load(image_path, check_existing=True)
+    except Exception as e:
+        warn(f"{name}: failed to load image {image_path}: {e!r}")
+        return None
+
+    px_w = float(getattr(img, "size", [0, 0])[0] or 0)
+    px_h = float(getattr(img, "size", [0, 0])[1] or 0)
+    if px_w <= 0 or px_h <= 0:
+        warn(f"{name}: image has invalid size; using square fallback")
+        px_w, px_h = 1.0, 1.0
+
+    h_mm = float(height_mm) * float(scale)
+    if width_mm is not None:
+        w_mm = float(width_mm) * float(scale)
+    else:
+        aspect = px_w / px_h
+        w_mm = h_mm * aspect
+
+    mesh = _make_corner_plane_mesh(
+        name + "_MESH",
+        plane=plane,
+        width_mm=w_mm,
+        height_mm=h_mm,
+        flip_u=bool(flip_u),
+        flip_v=bool(flip_v),
+    )
+
+    obj = bpy.data.objects.get(name)
+    if obj is None:
+        obj = bpy.data.objects.new(name, mesh)
+        bpy.context.scene.collection.objects.link(obj)
+    else:
+        obj.data = mesh
 
     # Material
-    if mat is not None:
-        try:
-            if obj.data.materials:
-                obj.data.materials[0] = mat
-            else:
-                obj.data.materials.append(mat)
-        except Exception:
-            pass
-
-
-def build_schematic(
-    *,
-    side: str,
-    cfg: Dict[str, Any],
-    defaults: Dict[str, Any],
-    manifest_path: Path,
-    stub: str,
-    rig_parent: bpy.types.Object,
-    rig_coll: bpy.types.Collection,
-    src_coll: bpy.types.Collection,
-) -> None:
-    side_key = side.upper()
-    svg_rel = cfg.get("svg")
-    if not svg_rel:
-        print(f"[build] No schematic.svg configured for {side_key}; skipping")
-        return
-
-    svg_path = resolve_path(manifest_path, svg_rel)
-    if not Path(svg_path).exists():
-        raise FileNotFoundError(f"Schematic SVG not found: {svg_path}")
-
-    plane = str(cfg.get("plane", "XZ")).upper()
-    scale = cfg.get("scale", 1.0)
-
-    # Anchor at the origin (nice for editing)
-    anchor = ensure_empty(f"RIG_{stub}_{side_key}_SCHEMATIC_ANCHOR", (0.0, 0.0, 0.0))
-    anchor.parent = rig_parent
-    move_object_to_collection(anchor, rig_coll)
-
-    xform = ensure_empty(f"RIG_{stub}_{side_key}_SCHEMATIC_XFORM", (0.0, 0.0, 0.0))
-    xform.parent = anchor
-    move_object_to_collection(xform, rig_coll)
-
-    # Orientation + scale
-    xform.rotation_euler = plane_rotation_for_schematic(plane)
-    xform.scale = Vector(coerce_scale(scale))
-
-    # Material from defaults (overrideable per side)
-    mat_cfg = defaults.get("material", {})
-    mat_name = str(cfg.get("material", mat_cfg.get("name", "MAT_SchematicInk")))
-    color = cfg.get("color_rgba", mat_cfg.get("color_rgba", [0.05, 0.05, 0.05, 1.0]))
-    rough = float(cfg.get("roughness", mat_cfg.get("roughness", 0.45)))
-    spec = float(cfg.get("specular", mat_cfg.get("specular", 0.15)))
-    metal = float(cfg.get("metallic", mat_cfg.get("metallic", 0.0)))
-    mat = ensure_material_principled(
-        mat_name,
-        color_rgba=[float(color[0]), float(color[1]), float(color[2]), float(color[3])],
-        roughness=rough,
-        specular=spec,
-        metallic=metal,
+    mat = ensure_material_image_emission(
+        "MAT_" + name,
+        image_path,
+        emission_strength=float(emission_strength),
+        interpolation=str(interpolation),
     )
-
-    # Geometry defaults (overrideable)
-    geom = defaults.get("geometry", {})
-    extrude_mm = float(cfg.get("extrude_mm", geom.get("extrude_mm", 0.02)))
-    bevel_depth_mm = float(cfg.get("bevel_depth_mm", geom.get("bevel_depth_mm", 0.10)))
-    bevel_resolution = int(cfg.get("bevel_resolution", geom.get("bevel_resolution", 2)))
-    fill_mode = str(cfg.get("fill_mode", geom.get("fill_mode", "BOTH")))
-    use_fill_caps = bool(cfg.get("use_fill_caps", geom.get("use_fill_caps", True)))
-
-    # Extrude "into" the corner for nicer shadows.
-    # - XZ plane: inward is +Y (our rotation makes curve normal -Y), so use negative extrude.
-    # - YZ plane: inward is +X (our rotation makes curve normal +X), so use positive extrude.
-    if plane == "XZ":
-        extrude_mm = -abs(extrude_mm)
+    if obj.data.materials:
+        obj.data.materials[0] = mat
     else:
-        extrude_mm = abs(extrude_mm)
+        obj.data.materials.append(mat)
 
-    # Import
-    imported = import_svg_as_curves(svg_path)
-    curve_objs = [o for o in imported if o.type == "CURVE"]
+    # Keep schematic planes "graphic" like (no shadows/reflections)
+    try:
+        obj.visible_shadow = False
+    except Exception:
+        pass
+    try:
+        obj.cycles_visibility.camera = True
+        obj.cycles_visibility.diffuse = False
+        obj.cycles_visibility.glossy = False
+        obj.cycles_visibility.transmission = False
+        obj.cycles_visibility.shadow = False
+        obj.cycles_visibility.scatter = False
+    except Exception:
+        pass
 
-    # Parent + move into our SRC collection
-    for o in curve_objs:
-        o.parent = xform
+    # Parenting + collection
+    if parent_obj is not None:
+        obj.parent = parent_obj
         try:
-            o.matrix_parent_inverse = xform.matrix_world.inverted()
+            obj.matrix_parent_inverse = parent_obj.matrix_world.inverted()
         except Exception:
             pass
-        move_object_to_collection(o, src_coll)
-        configure_curve_object(
-            o,
-            extrude_mm=extrude_mm,
-            bevel_depth_mm=bevel_depth_mm,
-            bevel_resolution=bevel_resolution,
-            fill_mode=fill_mode,
-            use_fill_caps=use_fill_caps,
-            mat=mat,
+
+    move_object_to_collection(obj, target_collection)
+    return obj
+
+
+# ----------------------------
+# External .blend collection import (robust)
+# ----------------------------
+
+@dataclass(frozen=True)
+class BlendCollectionKey:
+    blend_path: str
+    collection_name: Optional[str]
+    link: bool
+
+
+_LOADED_COLLECTION_CACHE: Dict[BlendCollectionKey, bpy.types.Collection] = {}
+
+
+def _list_collections_in_blend(blend_path: str, *, link: bool) -> List[str]:
+    with bpy.data.libraries.load(blend_path, link=link) as (data_from, _data_to):
+        return list(getattr(data_from, "collections", []))
+
+
+def _load_collection_from_blend(blend_path: str, collection_name: str, *, link: bool) -> Optional[bpy.types.Collection]:
+    with bpy.data.libraries.load(blend_path, link=link) as (data_from, data_to):
+        if collection_name not in getattr(data_from, "collections", []):
+            return None
+        data_to.collections = [collection_name]
+    if not data_to.collections:
+        return None
+    return data_to.collections[0]
+
+
+def load_collection_from_blend(
+    blend_path: str,
+    *,
+    collection_name: Optional[str],
+    link: bool,
+    fallback_names: Sequence[str] = (),
+) -> Optional[bpy.types.Collection]:
+    """Load a Collection datablock from an external .blend file.
+
+    - If the file doesn't exist: returns None.
+    - If the requested collection isn't found: tries fallbacks and then EXPORT_* collections.
+    """
+    blend_path = str(Path(blend_path).resolve())
+
+    if not os.path.exists(blend_path):
+        warn(f"Blend file not found: {blend_path}")
+        return None
+
+    key = BlendCollectionKey(blend_path=blend_path, collection_name=collection_name, link=bool(link))
+    if key in _LOADED_COLLECTION_CACHE:
+        return _LOADED_COLLECTION_CACHE[key]
+
+    try:
+        available = _list_collections_in_blend(blend_path, link=link)
+    except Exception as e:
+        warn(f"Failed to read collections from {blend_path}: {e!r}")
+        return None
+
+    if not available:
+        warn(f"No collections found in blend library: {blend_path}")
+        return None
+
+    candidates: List[str] = []
+    if collection_name:
+        candidates.append(str(collection_name))
+    for n in fallback_names:
+        if n:
+            candidates.append(str(n))
+
+    export_like = [n for n in available if n.startswith("EXPORT_")]
+    for n in sorted(export_like):
+        if n not in candidates:
+            candidates.append(n)
+
+    # Blender's default collection name
+    if "Collection" in available and "Collection" not in candidates:
+        candidates.append("Collection")
+
+    # Anything else
+    for n in available:
+        if n not in candidates:
+            candidates.append(n)
+
+    picked: Optional[bpy.types.Collection] = None
+    picked_name: Optional[str] = None
+
+    for cand in candidates:
+        coll = None
+        try:
+            coll = _load_collection_from_blend(blend_path, cand, link=link)
+        except Exception as e:
+            warn(f"Error loading collection {cand!r} from {blend_path}: {e!r}")
+            coll = None
+
+        if coll is None:
+            continue
+
+        # Prefer non-empty
+        n_objs = 0
+        try:
+            n_objs = len(getattr(coll, "all_objects", []))
+        except Exception:
+            n_objs = 0
+
+        picked = coll
+        picked_name = cand
+        if n_objs > 0:
+            break
+
+    if picked is None:
+        warn(
+            "Could not load any collection from blend. "
+            f"Requested={collection_name!r}. Available={available[:20]}{'...' if len(available) > 20 else ''}"
         )
+        return None
 
-    # Align corner to origin: shift along the axes that define the corner.
-    # We do this AFTER parenting so rotation+scale are included.
-    bpy.context.view_layer.update()
-
-    vmin, _vmax = bbox_world(curve_objs)
-    if plane == "XZ":
-        shift = Vector((-vmin.x, -vmin.y, -vmin.z))
-    else:
-        shift = Vector((-vmin.x, -vmin.y, -vmin.z))
-
-    xform.location += shift
-
-    print(f"[build] Imported schematic {side_key} ({plane}) from {svg_rel} -> aligned corner to origin")
+    info(f"Loaded collection '{picked.name}' (picked='{picked_name}', requested='{collection_name}') from: {blend_path}")
+    _LOADED_COLLECTION_CACHE[key] = picked
+    return picked
 
 
-# ----------------------------
-# Component instance import
-# ----------------------------
-
-def build_component_instance(
-    *,
+def instance_collection(
     name: str,
-    cfg: Dict[str, Any],
-    manifest_path: Path,
-    rig_parent: bpy.types.Object,
-    rig_coll: bpy.types.Collection,
-    src_coll: bpy.types.Collection,
-) -> None:
-    blend_rel = cfg.get("blend") or cfg.get("filepath") or cfg.get("path")
-    if not blend_rel:
-        print(f"[build] No blend path for component {name}; skipping")
-        return
-
-    blend_path = resolve_path(manifest_path, blend_rel)
-    if not Path(blend_path).exists():
-        raise FileNotFoundError(f"Component blend not found: {blend_path}")
-
-    requested_collection = cfg.get("collection") or cfg.get("blend_collection")
-    link = bool(cfg.get("link", True))
-
-    coll = load_collection_from_blend(
-        blend_path,
-        collection_name=str(requested_collection) if requested_collection else None,
-        fallback_names=(
-            str(requested_collection) if requested_collection else "",
-            "Collection",
-        ),
-        link=link,
-    )
-
-    anchor = ensure_empty(f"RIG_{name}", (0.0, 0.0, 0.0))
-    anchor.parent = rig_parent
-    move_object_to_collection(anchor, rig_coll)
-
-    loc = cfg.get("location_mm", [0.0, 0.0, 0.0])
-    rot = cfg.get("rotation_deg", [0.0, 0.0, 0.0])
-    sc = coerce_scale(cfg.get("scale", 1.0))
-    set_world_transform(anchor, loc, rot, sc)
-
-    inst_name = f"INST_{name}"
-    old = bpy.data.objects.get(inst_name)
-    if old is not None:
-        try:
-            bpy.data.objects.remove(old, do_unlink=True)
-        except Exception:
-            pass
-
-    inst = bpy.data.objects.new(inst_name, None)
-    bpy.context.scene.collection.objects.link(inst)
-    move_object_to_collection(inst, src_coll)
+    *,
+    collection: bpy.types.Collection,
+    location_mm: Sequence[float],
+    rotation_deg: Sequence[float],
+    scale: Union[float, Sequence[float]],
+    parent_obj: Optional[bpy.types.Object],
+    target_collection: bpy.types.Collection,
+) -> bpy.types.Object:
+    """Instance a collection via an Empty object."""
+    inst = bpy.data.objects.get(name)
+    if inst is None:
+        inst = bpy.data.objects.new(name, None)
+        bpy.context.scene.collection.objects.link(inst)
 
     inst.empty_display_type = "PLAIN_AXES"
     inst.instance_type = "COLLECTION"
-    inst.instance_collection = coll
+    inst.instance_collection = collection
 
-    inst.parent = anchor
-    try:
-        inst.matrix_parent_inverse = anchor.matrix_world.inverted()
-    except Exception:
-        pass
+    if parent_obj is not None:
+        inst.parent = parent_obj
+        try:
+            inst.matrix_parent_inverse = parent_obj.matrix_world.inverted()
+        except Exception:
+            pass
 
-    print(
-        f"[build] Component {name}: {Path(blend_rel).as_posix()}::{requested_collection or '(auto)'} "
-        f"(link={link})"
-    )
+    # Transform
+    inst.location = Vector([float(location_mm[0]), float(location_mm[1]), float(location_mm[2])])
+    inst.rotation_euler = Euler([math.radians(float(v)) for v in rotation_deg], "XYZ")
+
+    if isinstance(scale, (int, float)):
+        s = float(scale)
+        inst.scale = Vector((s, s, s))
+    else:
+        sc = list(scale)
+        if len(sc) != 3:
+            sc = [1.0, 1.0, 1.0]
+        inst.scale = Vector((float(sc[0]), float(sc[1]), float(sc[2])))
+
+    move_object_to_collection(inst, target_collection)
+    return inst
 
 
 # ----------------------------
 # Preview camera
 # ----------------------------
 
-def build_preview_camera(cfg: Dict[str, Any], rig_stub: str, rig_root: bpy.types.Object) -> None:
-    pcfg = cfg.get("preview_camera", {})
-    if not pcfg.get("enabled", True):
+def ensure_camera(name: str) -> bpy.types.Object:
+    cam = bpy.data.objects.get(name)
+    if cam is None:
+        cam_data = bpy.data.cameras.new(name + "_DATA")
+        cam = bpy.data.objects.new(name, cam_data)
+        bpy.context.scene.collection.objects.link(cam)
+    return cam
+
+
+def point_camera_at(cam_obj: bpy.types.Object, target_mm: Sequence[float]) -> None:
+    tgt = Vector([float(target_mm[0]), float(target_mm[1]), float(target_mm[2])])
+    direction = tgt - cam_obj.location
+    if direction.length < 1e-9:
         return
-
-    cam_name = str(pcfg.get("name", "CAM_ElectroMechIso"))
-    cam = ensure_camera(cam_name)
-
+    # Blender cameras look down local -Z, with local Y as up
     try:
-        cam.data.type = "PERSP"
-        cam.data.lens = float(pcfg.get("lens_mm", 85.0))
-        cam.data.sensor_fit = "HORIZONTAL"
-        cam.data.sensor_width = float(pcfg.get("sensor_width_mm", 36.0))
-    except Exception:
-        pass
-
-    cam.location = Vector(pcfg.get("location_mm", [600.0, 600.0, 600.0]))
-    try:
-        cam.data.clip_start = float(pcfg.get("clip_start_mm", 10.0))
-        cam.data.clip_end = float(pcfg.get("clip_end_mm", 200000.0))
-    except Exception:
-        pass
-
-    target = ensure_empty(f"EMPTY_{rig_stub}_CamTarget", pcfg.get("target_mm", [0.0, 0.0, 0.0]))
-
-    ensure_track_to(cam, target, track_axis="TRACK_NEGATIVE_Z", up_axis="UP_Y")
-
-    # Nice for interactive viewing when opening this asset file.
-    try:
-        bpy.context.scene.camera = cam
+        rot_quat = direction.to_track_quat("-Z", "Y")
+        cam_obj.rotation_euler = rot_quat.to_euler()
     except Exception:
         pass
 
 
 # ----------------------------
-# Main build
+# Build
 # ----------------------------
 
-def load_manifest(path: Path) -> Dict[str, Any]:
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+def build_scene(cfg: Dict[str, Any], manifest_path: str, *, output_override: Optional[str], no_pack_images: bool) -> str:
+    out_cfg = cfg.get("output", {}) if isinstance(cfg.get("output", {}), dict) else {}
 
+    export_collection_name = str(out_cfg.get("export_collection", "EXPORT_electrical_mechanical"))
+    out_blend_rel = out_cfg.get("blend_path", "assets/compiled/blend/electrical_mechanical.blend")
 
-def build_from_manifest(manifest_path: Path, *, output_override: Optional[str] = None) -> str:
-    cfg = load_manifest(manifest_path)
+    out_path = output_override or out_blend_rel
+    out_abs = Path(abspath_from_manifest(manifest_path, out_path)).resolve()
+    out_abs.parent.mkdir(parents=True, exist_ok=True)
 
-    if bool(cfg.get("scene", {}).get("remove_startup_objects", True)):
-        remove_startup_objects()
+    # Collections
+    export_col = ensure_collection(export_collection_name)
+    src_col = ensure_collection("SRC_electrical_mechanical", parent=export_col)
+    rig_col = ensure_collection("RIG_electrical_mechanical", parent=export_col)
 
-    apply_units(cfg)
-    apply_world_settings(cfg)
+    # Organize within SRC
+    schem_subcol = ensure_collection("SCHEMATICS", parent=src_col)
+    comp_subcol = ensure_collection("COMPONENTS", parent=src_col)
 
-    out_cfg = cfg.get("output", {})
-    export_name = str(out_cfg.get("export_collection", "EXPORT_electrical_mechanical"))
-    out_rel = str(out_cfg.get("blend_path", "assets/compiled/blend/electrical_mechanical.blend"))
+    # Root rig empty
+    rig_root = ensure_empty("RIG_ELECTRO_MECH_ROOT", location_mm=(0.0, 0.0, 0.0))
+    move_object_to_collection(rig_root, rig_col)
 
-    if output_override:
-        out_rel = output_override
+    # ----------------
+    # Schematics
+    # ----------------
+    schem_cfg = cfg.get("schematics", {}) if isinstance(cfg.get("schematics", {}), dict) else {}
+    schem_defaults = schem_cfg.get("defaults", {}) if isinstance(schem_cfg.get("defaults", {}), dict) else {}
 
-    out_path = Path(resolve_path(manifest_path, out_rel)).resolve()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    for side_key, default_plane in (("left", "XZ"), ("right", "YZ")):
+        side_cfg = schem_cfg.get(side_key, {}) if isinstance(schem_cfg.get(side_key, {}), dict) else {}
+        merged = merged_dict(schem_defaults, side_cfg)
 
-    # Rebuild export collection cleanly (useful in interactive sessions).
-    old_export = bpy.data.collections.get(export_name)
-    if old_export is not None:
-        delete_collection_recursive(old_export)
+        if not merged.get("enabled", True):
+            info(f"schematics.{side_key}: disabled")
+            continue
 
-    export_coll = ensure_collection(export_name)
+        plane = str(merged.get("plane", default_plane)).upper()
+        img_rel = merged.get("image_path") or merged.get("png") or merged.get("image")
+        if not img_rel:
+            warn(f"schematics.{side_key}: missing image_path")
+            continue
 
-    stub = export_name[len("EXPORT_") :] if export_name.startswith("EXPORT_") else export_name
-    src_coll = ensure_child_collection(export_coll, f"SRC_{stub}")
-    rig_coll = ensure_child_collection(export_coll, f"RIG_{stub}")
+        img_abs = abspath_from_manifest(manifest_path, str(img_rel))
 
-    # Root rig empty (handy handle if you open the asset file)
-    rig_root = ensure_empty(f"RIG_{stub}_ROOT", (0.0, 0.0, 0.0))
-    move_object_to_collection(rig_root, rig_coll)
+        # Size controls
+        size_mm = merged.get("size_mm", None)
+        width_mm: Optional[float] = None
+        height_mm: float = float(merged.get("height_mm", 300.0))
+        if isinstance(size_mm, (list, tuple)) and len(size_mm) == 2:
+            width_mm = float(size_mm[0])
+            height_mm = float(size_mm[1])
+        else:
+            # Optional override: width_mm
+            if "width_mm" in merged:
+                try:
+                    width_mm = float(merged.get("width_mm"))
+                except Exception:
+                    width_mm = None
 
-    # Schematics (walls)
-    svg_defaults = cfg.get("svg_defaults", {})
-    schem = cfg.get("schematics", {})
-    if "left" in schem:
-        build_schematic(
-            side="left",
-            cfg=schem.get("left", {}),
-            defaults=svg_defaults,
-            manifest_path=manifest_path,
-            stub=stub,
-            rig_parent=rig_root,
-            rig_coll=rig_coll,
-            src_coll=src_coll,
+        create_schematic_plane(
+            f"SCHEM_{side_key.upper()}",
+            image_path=img_abs,
+            plane=plane,
+            height_mm=height_mm,
+            width_mm=width_mm,
+            scale=float(merged.get("scale", 1.0)),
+            emission_strength=float(merged.get("emission_strength", 1.0)),
+            interpolation=str(merged.get("interpolation", "Cubic")),
+            flip_u=bool(merged.get("flip_u", False)),
+            flip_v=bool(merged.get("flip_v", False)),
+            parent_obj=rig_root,
+            target_collection=schem_subcol,
         )
-    if "right" in schem:
-        build_schematic(
-            side="right",
-            cfg=schem.get("right", {}),
-            defaults=svg_defaults,
-            manifest_path=manifest_path,
-            stub=stub,
-            rig_parent=rig_root,
-            rig_coll=rig_coll,
-            src_coll=src_coll,
+
+    # ----------------
+    # Components (optional)
+    # ----------------
+    comp_cfg = cfg.get("components", {}) if isinstance(cfg.get("components", {}), dict) else {}
+    comp_defaults = comp_cfg.get("defaults", {}) if isinstance(comp_cfg.get("defaults", {}), dict) else {}
+
+    def build_component(slot_name: str, spec: Dict[str, Any]) -> None:
+        merged = merged_dict(comp_defaults, spec)
+        if not merged.get("enabled", True):
+            info(f"components.{slot_name}: disabled")
+            return
+
+        blend_rel = merged.get("blend") or merged.get("filepath") or merged.get("path")
+        if not blend_rel:
+            warn(f"components.{slot_name}: missing 'blend' path; skipping")
+            return
+        blend_abs = abspath_from_manifest(manifest_path, str(blend_rel))
+
+        coll_name = merged.get("blend_collection") or merged.get("collection")
+        if coll_name is None:
+            warn(f"components.{slot_name}: missing 'blend_collection' (will fall back to first EXPORT_*)")
+
+        link = bool(merged.get("link", True))
+
+        fallback_names = []
+        # Helpful fallbacks
+        if isinstance(coll_name, str) and coll_name:
+            # allow user to specify without EXPORT_ prefix
+            if not coll_name.startswith("EXPORT_"):
+                fallback_names.append("EXPORT_" + coll_name)
+        fallback_names += ["Collection"]
+
+        coll = load_collection_from_blend(
+            blend_abs,
+            collection_name=str(coll_name) if coll_name is not None else None,
+            link=link,
+            fallback_names=fallback_names,
+        )
+        if coll is None:
+            warn(f"components.{slot_name}: could not load collection from {blend_abs}")
+            return
+
+        loc = merged.get("location_mm", [0.0, 0.0, 0.0])
+        rot = merged.get("rotation_deg", [0.0, 0.0, 0.0])
+        sc = merged.get("scale", 1.0)
+
+        instance_collection(
+            f"INST_{slot_name}",
+            collection=coll,
+            location_mm=loc,
+            rotation_deg=rot,
+            scale=sc,
+            parent_obj=rig_root,
+            target_collection=comp_subcol,
         )
 
-    # Components (floor)
-    comps = cfg.get("components", {})
+    for side in ("left", "right"):
+        side_block = comp_cfg.get(side, {}) if isinstance(comp_cfg.get(side, {}), dict) else {}
+        for kind in ("electrical", "mechanical"):
+            spec = side_block.get(kind, {}) if isinstance(side_block.get(kind, {}), dict) else {}
+            if not spec:
+                continue
+            build_component(f"{side}_{kind}", spec)
 
-    def maybe(cfg_side: Dict[str, Any], key: str) -> Dict[str, Any]:
-        v = cfg_side.get(key, {})
-        return v if isinstance(v, dict) else {}
+    # ----------------
+    # Preview camera (not included in export collection)
+    # ----------------
+    cam_cfg = cfg.get("preview_camera", {}) if isinstance(cfg.get("preview_camera", {}), dict) else {}
+    if bool(cam_cfg.get("enabled", True)):
+        cam_name = str(cam_cfg.get("name", "CAM_ElectroMechIso"))
+        cam = ensure_camera(cam_name)
 
-    left = comps.get("left", {}) if isinstance(comps.get("left", {}), dict) else {}
-    right = comps.get("right", {}) if isinstance(comps.get("right", {}), dict) else {}
+        # Put the camera into a separate collection so it is not part of export
+        preview_col = ensure_collection("PREVIEW")
+        move_object_to_collection(cam, preview_col)
 
-    build_component_instance(
-        name=f"{stub}_LEFT_ELECTRICAL",
-        cfg=maybe(left, "electrical"),
-        manifest_path=manifest_path,
-        rig_parent=rig_root,
-        rig_coll=rig_coll,
-        src_coll=src_coll,
-    )
-    build_component_instance(
-        name=f"{stub}_LEFT_MECHANICAL",
-        cfg=maybe(left, "mechanical"),
-        manifest_path=manifest_path,
-        rig_parent=rig_root,
-        rig_coll=rig_coll,
-        src_coll=src_coll,
-    )
-    build_component_instance(
-        name=f"{stub}_RIGHT_ELECTRICAL",
-        cfg=maybe(right, "electrical"),
-        manifest_path=manifest_path,
-        rig_parent=rig_root,
-        rig_coll=rig_coll,
-        src_coll=src_coll,
-    )
-    build_component_instance(
-        name=f"{stub}_RIGHT_MECHANICAL",
-        cfg=maybe(right, "mechanical"),
-        manifest_path=manifest_path,
-        rig_parent=rig_root,
-        rig_coll=rig_coll,
-        src_coll=src_coll,
-    )
+        # Camera settings
+        try:
+            cam.data.lens = float(cam_cfg.get("lens_mm", 85.0))
+        except Exception:
+            pass
+        try:
+            cam.data.sensor_width = float(cam_cfg.get("sensor_width_mm", 36.0))
+        except Exception:
+            pass
 
-    build_preview_camera(cfg, stub, rig_root)
+        direction = cam_cfg.get("direction", [1.0, 1.0, 1.0])
+        dvec = Vector([float(direction[0]), float(direction[1]), float(direction[2])])
+        if dvec.length < 1e-9:
+            dvec = Vector((1.0, 1.0, 1.0))
 
-    # Save + make library paths relative (important if you move the repo around)
-    bpy.ops.wm.save_as_mainfile(filepath=str(out_path), check_existing=False, compress=True)
+        distance_mm = float(cam_cfg.get("distance_mm", 1200.0))
+        loc = dvec.normalized() * distance_mm
+        cam.location = loc
 
+        target_mm = cam_cfg.get("target_mm", [0.0, 0.0, 0.0])
+        point_camera_at(cam, target_mm)
+
+        # Optional: set as scene camera for quick viewport preview
+        try:
+            bpy.context.scene.camera = cam
+        except Exception:
+            pass
+
+    # ----------------
+    # Pack images (optional)
+    # ----------------
+    pack_images = bool(out_cfg.get("pack_images", False)) and (not no_pack_images)
+    if pack_images:
+        try:
+            bpy.ops.file.pack_all()
+            info("Packed external files (images)")
+        except Exception as e:
+            warn(f"Failed to pack external files: {e!r}")
+
+    # Save
+    compress = bool(out_cfg.get("compress", True))
     try:
-        bpy.ops.file.make_paths_relative()
-        bpy.ops.wm.save_mainfile()
-    except Exception:
-        pass
+        bpy.ops.wm.save_as_mainfile(filepath=str(out_abs), compress=compress)
+    except TypeError:
+        # Some Blender builds may not support compress arg
+        bpy.ops.wm.save_as_mainfile(filepath=str(out_abs))
 
-    print(f"[build] Wrote: {out_path}")
-    print(f"[build] Export collection: {export_name}")
-
-    return str(out_path)
+    info(f"Wrote blend: {out_abs}")
+    return str(out_abs)
 
 
 def main() -> None:
-    args = parse_args(argv_after_dashes())
+    args = parse_args()
 
-    if args.manifest:
-        manifest_path = Path(args.manifest).resolve()
-    else:
-        manifest_path = (Path(__file__).resolve().parent / "manifest.json").resolve()
+    manifest_path = str(Path(args.manifest).resolve())
+    if not os.path.exists(manifest_path):
+        raise FileNotFoundError(f"Manifest not found: {manifest_path}")
 
-    build_from_manifest(manifest_path, output_override=args.output)
+    if not args.no_reset:
+        reset_to_empty_file()
+
+    cfg = load_json(manifest_path)
+
+    # Units: 1 BU = 1 mm
+    apply_units(cfg)
+
+    # Build
+    build_scene(cfg, manifest_path, output_override=args.output, no_pack_images=args.no_pack_images)
 
 
 if __name__ == "__main__":

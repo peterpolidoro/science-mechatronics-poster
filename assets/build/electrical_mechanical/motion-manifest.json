@@ -1,0 +1,110 @@
+{
+  "output": {
+    "blend_path": "assets/compiled/blend/motion.blend",
+    "export_collection": "EXPORT_motion",
+    "pack_images": false,
+    "compress": true
+  },
+  "units": {
+    "system": "METRIC",
+    "length_unit": "MILLIMETERS",
+    "scale_length": 0.001
+  },
+  "schematics": {
+    "defaults": {
+      "enabled": true,
+      "height_mm": 300.0,
+      "scale": 1.0,
+      "emission_strength": 1.0,
+      "interpolation": "Cubic",
+      "flip_u": false,
+      "flip_v": false,
+      "collection": "SCHEMATICS"
+    },
+    "left": {
+      "image_path": "assets/images/mouse-joystick-pcb-yaw-motor.png",
+      "plane": "XZ"
+    },
+    "right": {
+      "image_path": "assets/images/mouse-joystick-pcb-pitch-motor.png",
+      "plane": "YZ"
+    }
+  },
+  "components": {
+    "defaults": {
+      "enabled": true,
+      "link": true,
+      "rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "collection": "COMPONENTS"
+    },
+    "left": {
+      "electrical": {
+        "enabled": true,
+        "blend": "assets/compiled/blend/pcb.blend",
+        "blend_collection": "EXPORT_pcb_yaw_axis_ctrl",
+        "location_mm": [
+          30.0,
+          90.0,
+          0.0
+        ],
+        "scale": 3.0
+      },
+      "mechanical": {
+        "enabled": true,
+        "blend": "assets/compiled/blend/joystick.blend",
+        "blend_collection": "EXPORT_joystick_yaw_axis_transducers",
+        "location_mm": [
+          400.0,
+          90.0,
+          0.0
+        ],
+        "scale": 1.5
+      }
+    },
+    "right": {
+      "electrical": {
+        "enabled": false,
+        "blend": "assets/compiled/blend/pcb.blend",
+        "blend_collection": "EXPORT_pcb_pitch_axis_ctrl",
+        "location_mm": [
+          30.0,
+          120.0,
+          0.0
+        ],
+        "scale": 8.0
+      },
+      "mechanical": {
+        "enabled": false,
+        "blend": "assets/compiled/blend/joystick.blend",
+        "blend_collection": "EXPORT_joystick_pitch_axis_transducers",
+        "location_mm": [
+          170.0,
+          320.0,
+          0.0
+        ],
+        "scale": 1.0
+      }
+    }
+  },
+  "preview_camera": {
+    "enabled": true,
+    "name": "CAM_ElectroMechIso",
+    "distance_mm": 1200.0,
+    "direction": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "target_mm": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "lens_mm": 85.0,
+    "sensor_width_mm": 36.0
+  }
+}
