@@ -1,12 +1,13 @@
 {
   "meta": {
-    "name": "trial_stage_frames_example_13f",
-    "generated_utc": "2026-02-13T16:20:10Z",
+    "name": "trial_stage_frames_example_9f_no_latency",
+    "generated_utc": "2026-02-13T18:01:04Z",
     "notes": [
-      "Example angles based on trial schematic: yaw and pitch ramp to 0 during moving_to_ready, hold during latency, pitch ramps during pull.",
+      "Latency phase removed; moving_to_ready ends at yaw=0,pitch=0 and pull begins at the next eased sample to avoid overlap.",
+      "Pull frames use ease_out_cubic samples at t = 0.25, 0.5, 0.75, 1.0 (so first pull pitch is 5.78125 when max is 10).",
       "Adjust yaw_sign/pitch_sign if positive direction ends up reversed in your rig."
     ],
-    "num_frames": 13,
+    "num_frames": 9,
     "phases": {
       "moving_to_ready": {
         "frames": 5,
@@ -19,28 +20,23 @@
           0.0
         ]
       },
-      "latency": {
-        "frames": 3,
-        "yaw_deg": [
-          0.0,
-          0.0
-        ],
-        "pitch_deg": [
-          0.0,
-          0.0
-        ]
-      },
       "pull": {
-        "frames": 5,
+        "frames": 4,
         "yaw_deg": [
           0.0,
           0.0
         ],
         "pitch_deg": [
-          0.0,
+          5.78125,
           10.0
         ],
-        "easing": "ease_out_cubic"
+        "easing": "ease_out_cubic",
+        "samples": [
+          0.25,
+          0.5,
+          0.75,
+          1.0
+        ]
       }
     }
   },
@@ -59,8 +55,8 @@
   },
   "ghost_trail": {
     "enabled": true,
-    "alpha_first": 0.05,
-    "alpha_pre_last": 0.25,
+    "alpha_first": 1.0,
+    "alpha_pre_last": 1.0,
     "notes": [
       "Alpha uses per-object alpha via Object Info; original materials are preserved.",
       "Linear ramp: frame 0 -> alpha_first, frame N-2 -> alpha_pre_last, frame N-1 forced to 1.0."
@@ -97,82 +93,54 @@
     {
       "frame": 1,
       "phase": "moving_to_ready",
-      "t_norm": 0.083333,
+      "t_norm": 0.125,
       "yaw_deg": -27.75,
       "pitch_deg": -7.5
     },
     {
       "frame": 2,
       "phase": "moving_to_ready",
-      "t_norm": 0.166667,
+      "t_norm": 0.25,
       "yaw_deg": -18.5,
       "pitch_deg": -5.0
     },
     {
       "frame": 3,
       "phase": "moving_to_ready",
-      "t_norm": 0.25,
+      "t_norm": 0.375,
       "yaw_deg": -9.25,
       "pitch_deg": -2.5
     },
     {
       "frame": 4,
       "phase": "moving_to_ready",
-      "t_norm": 0.333333,
-      "yaw_deg": 0.0,
-      "pitch_deg": 0.0
-    },
-    {
-      "frame": 5,
-      "phase": "latency",
-      "t_norm": 0.416667,
-      "yaw_deg": 0.0,
-      "pitch_deg": 0.0
-    },
-    {
-      "frame": 6,
-      "phase": "latency",
       "t_norm": 0.5,
       "yaw_deg": 0.0,
       "pitch_deg": 0.0
     },
     {
-      "frame": 7,
-      "phase": "latency",
-      "t_norm": 0.583333,
-      "yaw_deg": 0.0,
-      "pitch_deg": 0.0
-    },
-    {
-      "frame": 8,
+      "frame": 5,
       "phase": "pull",
-      "t_norm": 0.666667,
-      "yaw_deg": 0.0,
-      "pitch_deg": 0.0
-    },
-    {
-      "frame": 9,
-      "phase": "pull",
-      "t_norm": 0.75,
+      "t_norm": 0.625,
       "yaw_deg": 0.0,
       "pitch_deg": 5.78125
     },
     {
-      "frame": 10,
+      "frame": 6,
       "phase": "pull",
-      "t_norm": 0.833333,
+      "t_norm": 0.75,
       "yaw_deg": 0.0,
       "pitch_deg": 8.75
     },
     {
-      "frame": 11,
+      "frame": 7,
       "phase": "pull",
-      "t_norm": 0.916667,
+      "t_norm": 0.875,
       "yaw_deg": 0.0,
       "pitch_deg": 9.84375
     },
     {
-      "frame": 12,
+      "frame": 8,
       "phase": "pull",
       "t_norm": 1.0,
       "yaw_deg": 0.0,
