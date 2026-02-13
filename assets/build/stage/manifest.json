@@ -1,0 +1,502 @@
+{
+  "meta": {
+    "name": "trial_stage_frames_example",
+    "generated_utc": "2026-02-12T21:57:15Z",
+    "notes": [
+      "Example angles based on trial schematic: yaw and pitch ramp to 0 during moving_to_ready, hold during latency, pitch ramps during pull.",
+      "Adjust yaw_sign/pitch_sign if positive direction ends up reversed in your rig."
+    ],
+    "num_frames": 60,
+    "phases": {
+      "moving_to_ready": {
+        "frames": 25,
+        "yaw_deg": [
+          -37.0,
+          0.0
+        ],
+        "pitch_deg": [
+          -10.0,
+          0.0
+        ]
+      },
+      "latency": {
+        "frames": 10,
+        "yaw_deg": [
+          0.0,
+          0.0
+        ],
+        "pitch_deg": [
+          0.0,
+          0.0
+        ]
+      },
+      "pull": {
+        "frames": 25,
+        "yaw_deg": [
+          0.0,
+          0.0
+        ],
+        "pitch_deg": [
+          0.0,
+          10.0
+        ],
+        "easing": "ease_out_cubic"
+      }
+    }
+  },
+  "source_asset": {
+    "blend_path": "assets/compiled/blend/joystick.blend",
+    "export_collection": "EXPORT_stage",
+    "import_method": "APPEND"
+  },
+  "stage_rig": {
+    "root_name": "RIG_STAGE_ROOT",
+    "yaw_name": "RIG_STAGE_YAW_AXIS",
+    "pitch_name": "RIG_STAGE_PITCH_AXIS",
+    "delta_axis": "LOCAL_Z",
+    "yaw_sign": 1.0,
+    "pitch_sign": 1.0
+  },
+  "layouts": {
+    "stacked": {
+      "enabled": true,
+      "base_location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "z_span_factor": 0.0
+    },
+    "timez": {
+      "enabled": true,
+      "base_location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "z_span_factor": 0.2
+    }
+  },
+  "frames": [
+    {
+      "frame": 0,
+      "phase": "moving_to_ready",
+      "t_norm": 0.0,
+      "yaw_deg": -37.0,
+      "pitch_deg": -10.0
+    },
+    {
+      "frame": 1,
+      "phase": "moving_to_ready",
+      "t_norm": 0.016949,
+      "yaw_deg": -35.458333,
+      "pitch_deg": -9.583333
+    },
+    {
+      "frame": 2,
+      "phase": "moving_to_ready",
+      "t_norm": 0.033898,
+      "yaw_deg": -33.916667,
+      "pitch_deg": -9.166667
+    },
+    {
+      "frame": 3,
+      "phase": "moving_to_ready",
+      "t_norm": 0.050847,
+      "yaw_deg": -32.375,
+      "pitch_deg": -8.75
+    },
+    {
+      "frame": 4,
+      "phase": "moving_to_ready",
+      "t_norm": 0.067797,
+      "yaw_deg": -30.833333,
+      "pitch_deg": -8.333333
+    },
+    {
+      "frame": 5,
+      "phase": "moving_to_ready",
+      "t_norm": 0.084746,
+      "yaw_deg": -29.291667,
+      "pitch_deg": -7.916667
+    },
+    {
+      "frame": 6,
+      "phase": "moving_to_ready",
+      "t_norm": 0.101695,
+      "yaw_deg": -27.75,
+      "pitch_deg": -7.5
+    },
+    {
+      "frame": 7,
+      "phase": "moving_to_ready",
+      "t_norm": 0.118644,
+      "yaw_deg": -26.208333,
+      "pitch_deg": -7.083333
+    },
+    {
+      "frame": 8,
+      "phase": "moving_to_ready",
+      "t_norm": 0.135593,
+      "yaw_deg": -24.666667,
+      "pitch_deg": -6.666667
+    },
+    {
+      "frame": 9,
+      "phase": "moving_to_ready",
+      "t_norm": 0.152542,
+      "yaw_deg": -23.125,
+      "pitch_deg": -6.25
+    },
+    {
+      "frame": 10,
+      "phase": "moving_to_ready",
+      "t_norm": 0.169492,
+      "yaw_deg": -21.583333,
+      "pitch_deg": -5.833333
+    },
+    {
+      "frame": 11,
+      "phase": "moving_to_ready",
+      "t_norm": 0.186441,
+      "yaw_deg": -20.041667,
+      "pitch_deg": -5.416667
+    },
+    {
+      "frame": 12,
+      "phase": "moving_to_ready",
+      "t_norm": 0.20339,
+      "yaw_deg": -18.5,
+      "pitch_deg": -5.0
+    },
+    {
+      "frame": 13,
+      "phase": "moving_to_ready",
+      "t_norm": 0.220339,
+      "yaw_deg": -16.958333,
+      "pitch_deg": -4.583333
+    },
+    {
+      "frame": 14,
+      "phase": "moving_to_ready",
+      "t_norm": 0.237288,
+      "yaw_deg": -15.416667,
+      "pitch_deg": -4.166667
+    },
+    {
+      "frame": 15,
+      "phase": "moving_to_ready",
+      "t_norm": 0.254237,
+      "yaw_deg": -13.875,
+      "pitch_deg": -3.75
+    },
+    {
+      "frame": 16,
+      "phase": "moving_to_ready",
+      "t_norm": 0.271186,
+      "yaw_deg": -12.333333,
+      "pitch_deg": -3.333333
+    },
+    {
+      "frame": 17,
+      "phase": "moving_to_ready",
+      "t_norm": 0.288136,
+      "yaw_deg": -10.791667,
+      "pitch_deg": -2.916667
+    },
+    {
+      "frame": 18,
+      "phase": "moving_to_ready",
+      "t_norm": 0.305085,
+      "yaw_deg": -9.25,
+      "pitch_deg": -2.5
+    },
+    {
+      "frame": 19,
+      "phase": "moving_to_ready",
+      "t_norm": 0.322034,
+      "yaw_deg": -7.708333,
+      "pitch_deg": -2.083333
+    },
+    {
+      "frame": 20,
+      "phase": "moving_to_ready",
+      "t_norm": 0.338983,
+      "yaw_deg": -6.166667,
+      "pitch_deg": -1.666667
+    },
+    {
+      "frame": 21,
+      "phase": "moving_to_ready",
+      "t_norm": 0.355932,
+      "yaw_deg": -4.625,
+      "pitch_deg": -1.25
+    },
+    {
+      "frame": 22,
+      "phase": "moving_to_ready",
+      "t_norm": 0.372881,
+      "yaw_deg": -3.083333,
+      "pitch_deg": -0.833333
+    },
+    {
+      "frame": 23,
+      "phase": "moving_to_ready",
+      "t_norm": 0.389831,
+      "yaw_deg": -1.541667,
+      "pitch_deg": -0.416667
+    },
+    {
+      "frame": 24,
+      "phase": "moving_to_ready",
+      "t_norm": 0.40678,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 25,
+      "phase": "latency",
+      "t_norm": 0.423729,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 26,
+      "phase": "latency",
+      "t_norm": 0.440678,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 27,
+      "phase": "latency",
+      "t_norm": 0.457627,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 28,
+      "phase": "latency",
+      "t_norm": 0.474576,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 29,
+      "phase": "latency",
+      "t_norm": 0.491525,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 30,
+      "phase": "latency",
+      "t_norm": 0.508475,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 31,
+      "phase": "latency",
+      "t_norm": 0.525424,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 32,
+      "phase": "latency",
+      "t_norm": 0.542373,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 33,
+      "phase": "latency",
+      "t_norm": 0.559322,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 34,
+      "phase": "latency",
+      "t_norm": 0.576271,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 35,
+      "phase": "pull",
+      "t_norm": 0.59322,
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    {
+      "frame": 36,
+      "phase": "pull",
+      "t_norm": 0.610169,
+      "yaw_deg": 0.0,
+      "pitch_deg": 1.19864
+    },
+    {
+      "frame": 37,
+      "phase": "pull",
+      "t_norm": 0.627119,
+      "yaw_deg": 0.0,
+      "pitch_deg": 2.297454
+    },
+    {
+      "frame": 38,
+      "phase": "pull",
+      "t_norm": 0.644068,
+      "yaw_deg": 0.0,
+      "pitch_deg": 3.300781
+    },
+    {
+      "frame": 39,
+      "phase": "pull",
+      "t_norm": 0.661017,
+      "yaw_deg": 0.0,
+      "pitch_deg": 4.212963
+    },
+    {
+      "frame": 40,
+      "phase": "pull",
+      "t_norm": 0.677966,
+      "yaw_deg": 0.0,
+      "pitch_deg": 5.038339
+    },
+    {
+      "frame": 41,
+      "phase": "pull",
+      "t_norm": 0.694915,
+      "yaw_deg": 0.0,
+      "pitch_deg": 5.78125
+    },
+    {
+      "frame": 42,
+      "phase": "pull",
+      "t_norm": 0.711864,
+      "yaw_deg": 0.0,
+      "pitch_deg": 6.446036
+    },
+    {
+      "frame": 43,
+      "phase": "pull",
+      "t_norm": 0.728814,
+      "yaw_deg": 0.0,
+      "pitch_deg": 7.037037
+    },
+    {
+      "frame": 44,
+      "phase": "pull",
+      "t_norm": 0.745763,
+      "yaw_deg": 0.0,
+      "pitch_deg": 7.558594
+    },
+    {
+      "frame": 45,
+      "phase": "pull",
+      "t_norm": 0.762712,
+      "yaw_deg": 0.0,
+      "pitch_deg": 8.015046
+    },
+    {
+      "frame": 46,
+      "phase": "pull",
+      "t_norm": 0.779661,
+      "yaw_deg": 0.0,
+      "pitch_deg": 8.410735
+    },
+    {
+      "frame": 47,
+      "phase": "pull",
+      "t_norm": 0.79661,
+      "yaw_deg": 0.0,
+      "pitch_deg": 8.75
+    },
+    {
+      "frame": 48,
+      "phase": "pull",
+      "t_norm": 0.813559,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.037182
+    },
+    {
+      "frame": 49,
+      "phase": "pull",
+      "t_norm": 0.830508,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.27662
+    },
+    {
+      "frame": 50,
+      "phase": "pull",
+      "t_norm": 0.847458,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.472656
+    },
+    {
+      "frame": 51,
+      "phase": "pull",
+      "t_norm": 0.864407,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.62963
+    },
+    {
+      "frame": 52,
+      "phase": "pull",
+      "t_norm": 0.881356,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.751881
+    },
+    {
+      "frame": 53,
+      "phase": "pull",
+      "t_norm": 0.898305,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.84375
+    },
+    {
+      "frame": 54,
+      "phase": "pull",
+      "t_norm": 0.915254,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.909578
+    },
+    {
+      "frame": 55,
+      "phase": "pull",
+      "t_norm": 0.932203,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.953704
+    },
+    {
+      "frame": 56,
+      "phase": "pull",
+      "t_norm": 0.949153,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.980469
+    },
+    {
+      "frame": 57,
+      "phase": "pull",
+      "t_norm": 0.966102,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.994213
+    },
+    {
+      "frame": 58,
+      "phase": "pull",
+      "t_norm": 0.983051,
+      "yaw_deg": 0.0,
+      "pitch_deg": 9.999277
+    },
+    {
+      "frame": 59,
+      "phase": "pull",
+      "t_norm": 1.0,
+      "yaw_deg": 0.0,
+      "pitch_deg": 10.0
+    }
+  ]
+}
