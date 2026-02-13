@@ -1,24 +1,21 @@
 """
-build_trial_stage_frames.py
+build_trial_stage_frames_v2.py
 
 Blender script to generate a "poster" style stage-motion stack by duplicating
 EXPORT_stage many times and dialing yaw/pitch per frame from a JSON manifest.
 
-Key feature: ghost trail WITHOUT overriding original materials
-------------------------------------------------------------
-Instead of assigning a single "ghost" material to everything, this script
-preserves all existing materials and injects a small wrapper at each material's
-output:
-
-    Mix(Transparent, OriginalSurface, factor=ObjectInfo.Alpha)
-
-Then each duplicated object gets a per-frame object-color alpha, so you can
-render a ghosted trail while keeping the original look.
+Adds:
+  - Ghost-trail transparency without overriding the original materials for the
+    FINAL frame (so the last pose is fully opaque / visually dominant).
+  - Ghost materials are per-original-material copies with a small node patch
+    (Transparent + Mix Shader) driven by per-object Object Info color.
+  - Optional (off by default): boolean "difference" trail, where each earlier
+    frame subtracts all later frames so only the unique volume is shown.
 
 Usage (recommended):
   blender --background --factory-startup \
-    --python build_trial_stage_frames.py -- \
-    --manifest /path/to/trial_stage_frames_manifest.json \
+    --python build_trial_stage_frames_v2.py -- \
+    --manifest /path/to/manifest.json \
     --out /path/to/trial_stage_frames.blend \
     --layout both
 
@@ -32,6 +29,8 @@ Notes:
     (a "linked duplicate" style) so file size stays reasonable.
   - Applies yaw/pitch as a delta about each rig empty's local Z axis via
     quaternion multiplication, preserving any base alignment rotations.
+  - In Eevee, **Alpha Blend** materials do not write to depth. This script
+    defaults ghost materials to **Alpha Hashed** so alpha=1.0 behaves opaque.
 """
 
 import argparse
@@ -78,7 +77,6 @@ def _parse_args():
 
 def cleanup_default_scene():
     # Remove all objects from the current scene.
-    # (Leaves datablocks that are used by something else intact.)
     for obj in list(bpy.context.scene.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
 
@@ -86,10 +84,6 @@ def cleanup_default_scene():
     master = bpy.context.scene.collection
     for col in list(master.children):
         master.children.unlink(col)
-
-    # Purge orphaned collections/objects (optional; safe-ish)
-    # NOTE: Purging all orphans can remove data you want to keep. Keep conservative.
-    # bpy.ops.outliner.orphans_purge(do_recursive=True)
 
 
 def append_export_collection(blend_path: str, collection_name: str) -> bpy.types.Collection:
@@ -183,7 +177,6 @@ def compute_world_bbox_z_span(objs) -> float:
             continue
         any_mesh = True
         eval_obj = obj.evaluated_get(depsgraph)
-        # bound_box is in local space (8 corners)
         for corner in eval_obj.bound_box:
             co = eval_obj.matrix_world @ Vector(corner)
             min_v.x = min(min_v.x, co.x)
@@ -196,161 +189,6 @@ def compute_world_bbox_z_span(objs) -> float:
     if not any_mesh:
         return 0.0
     return max_v.z - min_v.z
-
-
-# ----------------------------
-# Material transparency helpers
-# ----------------------------
-
-def collect_materials_from_objects(objs):
-    """Return a list of unique materials referenced by mesh objects."""
-    mats_by_name = {}
-    for obj in objs:
-        if obj.type != "MESH":
-            continue
-        for slot in getattr(obj, "material_slots", []):
-            mat = slot.material
-            if mat is not None:
-                mats_by_name[mat.name] = mat
-    return list(mats_by_name.values())
-
-
-def ensure_material_object_alpha_mix(mat: bpy.types.Material, tag: str = "TRIAL_OBJECT_ALPHA"):
-    """
-    Modify a material *in-place* to respect Object Info Alpha.
-
-    We preserve the existing shader graph by inserting a wrapper right before
-    the Material Output surface:
-
-        Mix(Transparent, OriginalSurface, factor=ObjectInfo.Alpha)
-
-    This lets us keep the original materials but vary opacity per object.
-    """
-    if mat is None:
-        return
-
-    # Ensure nodes exist
-    if not mat.use_nodes:
-        mat.use_nodes = True
-
-    nt = mat.node_tree
-    nodes = nt.nodes
-    links = nt.links
-
-    # If we've already wrapped this material, do nothing.
-    for n in nodes:
-        if n.name.startswith(tag) or n.label == tag:
-            return
-
-    # Find the active material output node
-    out = None
-    for n in nodes:
-        if n.type == "OUTPUT_MATERIAL" and getattr(n, "is_active_output", False):
-            out = n
-            break
-    if out is None:
-        out = next((n for n in nodes if n.type == "OUTPUT_MATERIAL"), None)
-    if out is None:
-        out = nodes.new("ShaderNodeOutputMaterial")
-
-    surf_in = out.inputs.get("Surface")
-
-    # Capture the existing surface shader connection (if any)
-    orig_socket = None
-    if surf_in is not None and surf_in.is_linked:
-        # Remove all links into Surface (should be 1, but be defensive)
-        existing_links = list(surf_in.links)
-        if existing_links:
-            orig_socket = existing_links[0].from_socket
-        for lk in existing_links:
-            try:
-                links.remove(lk)
-            except Exception:
-                pass
-
-    # If no shader was connected, create a basic principled using the material's
-    # diffuse_color as a fallback.
-    if orig_socket is None:
-        bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-        bsdf.location = out.location + Vector((-300, 0))
-        try:
-            bsdf.inputs["Base Color"].default_value = mat.diffuse_color
-        except Exception:
-            pass
-        orig_socket = bsdf.outputs.get("BSDF")
-
-    # Create nodes
-    obj_info = nodes.new("ShaderNodeObjectInfo")
-    obj_info.name = f"{tag}__OBJINFO"
-    obj_info.label = tag
-
-    transparent = nodes.new("ShaderNodeBsdfTransparent")
-    transparent.name = f"{tag}__TRANSPARENT"
-    transparent.label = tag
-
-    mix = nodes.new("ShaderNodeMixShader")
-    mix.name = f"{tag}__MIX"
-    mix.label = tag
-
-    # Place nodes near the output for readability
-    mix.location = out.location + Vector((-200, 0))
-    obj_info.location = mix.location + Vector((-250, 160))
-    transparent.location = mix.location + Vector((-250, -160))
-
-    # Connect graph: alpha -> fac, transparent -> shader1, original -> shader2
-    try:
-        links.new(obj_info.outputs["Alpha"], mix.inputs["Fac"])
-    except Exception:
-        # Blender sometimes exposes factor as inputs[0]
-        links.new(obj_info.outputs["Alpha"], mix.inputs[0])
-
-    links.new(transparent.outputs["BSDF"], mix.inputs[1])
-    links.new(orig_socket, mix.inputs[2])
-    links.new(mix.outputs["Shader"], out.inputs["Surface"])
-
-    # Eevee needs blend mode to actually show transparency.
-    # (Safe to set even if you'll render in Cycles.)
-    try:
-        mat.blend_method = "BLEND"
-    except Exception:
-        pass
-    try:
-        mat.shadow_method = "NONE"
-    except Exception:
-        pass
-
-
-def compute_trail_alpha(idx: int, n: int, alpha_first: float, alpha_pre_last: float) -> float:
-    """Linear ramp from first frame to penultimate; last frame forced to 1.0."""
-    if n <= 0:
-        return 1.0
-    if n == 1:
-        return 1.0
-    if idx >= n - 1:
-        return 1.0
-
-    if n <= 2:
-        a = float(alpha_first)
-        return max(0.0, min(1.0, a))
-
-    t = idx / float(n - 2)  # idx==0 -> 0, idx==n-2 -> 1
-    a = float(alpha_first) + (float(alpha_pre_last) - float(alpha_first)) * t
-    return max(0.0, min(1.0, a))
-
-
-def set_instance_alpha(mapping, alpha: float):
-    """Set per-object alpha on all mesh objects in the mapping."""
-    for obj in mapping.values():
-        if obj.type != "MESH":
-            continue
-        try:
-            c = list(obj.color)
-            if len(c) >= 4:
-                c[3] = float(alpha)
-                obj.color = c
-        except Exception:
-            # Some object types / Blender builds may not expose obj.color; ignore.
-            pass
 
 
 # ----------------------------
@@ -377,6 +215,204 @@ def apply_local_z_delta_deg(obj: bpy.types.Object, delta_deg: float, base_prop: 
 
 
 # ----------------------------
+# Ghost-trail material helpers
+# ----------------------------
+
+def _find_material_output_node(nt: bpy.types.NodeTree):
+    for n in nt.nodes:
+        if n.type == "OUTPUT_MATERIAL":
+            return n
+    return None
+
+
+def _ensure_ghost_node_patch(mat: bpy.types.Material, cfg: dict):
+    """
+    Patch a material so its final Surface is:
+        Mix(Transparent, OriginalSurface, fac = object_color_r)
+
+    This is only applied to a COPY of an original material, never the original.
+    """
+    if not mat.use_nodes:
+        mat.use_nodes = True
+
+    nt = mat.node_tree
+    out = _find_material_output_node(nt)
+    if out is None:
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        out.location = (400, 0)
+
+    # If already patched (id prop marker), don't patch twice
+    if mat.get("__ghost_patched__", False):
+        return
+
+    surf_in = out.inputs.get("Surface")
+    if surf_in is None:
+        # Weird material; give up gracefully
+        mat["__ghost_patched__"] = True
+        return
+
+    # Find existing Surface link (Original shader output)
+    orig_link = surf_in.links[0] if surf_in.links else None
+    orig_socket = orig_link.from_socket if orig_link else None
+
+    # Build nodes
+    obj_info = nt.nodes.new("ShaderNodeObjectInfo")
+    obj_info.location = (0, -200)
+
+    sep_rgb = nt.nodes.new("ShaderNodeSeparateRGB")
+    sep_rgb.location = (200, -200)
+
+    bsdf_transp = nt.nodes.new("ShaderNodeBsdfTransparent")
+    bsdf_transp.location = (200, 80)
+
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    mix.location = (600, 0)
+
+    # Wire: ObjectInfo.Color -> SeparateRGB -> R -> Mix.Fac
+    nt.links.new(obj_info.outputs.get("Color"), sep_rgb.inputs.get("Image"))
+    nt.links.new(sep_rgb.outputs.get("R"), mix.inputs.get("Fac"))
+
+    # Wire: Transparent -> Mix.Shader(1)
+    nt.links.new(bsdf_transp.outputs.get("BSDF"), mix.inputs[1])
+
+    # Wire: Original -> Mix.Shader(2) if possible, else create Principled
+    if orig_socket is None:
+        principled = nt.nodes.new("ShaderNodeBsdfPrincipled")
+        principled.location = (200, 0)
+        orig_socket = principled.outputs.get("BSDF")
+    else:
+        # Disconnect original from output
+        try:
+            nt.links.remove(orig_link)
+        except Exception:
+            pass
+
+    nt.links.new(orig_socket, mix.inputs[2])
+    nt.links.new(mix.outputs.get("Shader"), surf_in)
+
+    # Render settings for transparency in Eevee
+    # NOTE: blend_method affects depth-write behavior.
+    blend_method = str(cfg.get("blend_method", "HASHED")).upper()
+    if blend_method not in {"OPAQUE", "CLIP", "HASHED", "BLEND"}:
+        blend_method = "HASHED"
+
+    try:
+        mat.blend_method = blend_method
+    except Exception:
+        pass
+
+    # Shadows: often cleaner to disable or use hashed
+    shadow_method = str(cfg.get("shadow_method", "HASHED")).upper()
+    try:
+        mat.shadow_method = shadow_method
+    except Exception:
+        pass
+
+    # Backface culling can reduce "see-through interior" clutter for ghosts
+    try:
+        mat.use_backface_culling = bool(cfg.get("use_backface_culling", True))
+    except Exception:
+        pass
+
+    mat["__ghost_patched__"] = True
+
+
+def get_or_create_ghost_material(orig: bpy.types.Material, cache: dict, cfg: dict) -> bpy.types.Material:
+    if orig is None:
+        return None
+    if orig in cache:
+        return cache[orig]
+
+    ghost = orig.copy()
+    ghost.name = f"{orig.name}{cfg.get('suffix', '__ghost')}"
+    _ensure_ghost_node_patch(ghost, cfg)
+
+    cache[orig] = ghost
+    return ghost
+
+
+def assign_ghost_materials(obj: bpy.types.Object, mat_cache: dict, cfg: dict):
+    if obj.type != "MESH":
+        return
+    # Swap each material slot for its ghost copy
+    for slot in obj.material_slots:
+        m = slot.material
+        if m is None:
+            continue
+        slot.material = get_or_create_ghost_material(m, mat_cache, cfg)
+
+
+# ----------------------------
+# Optional boolean "difference" helpers
+# ----------------------------
+
+def _boolean_collection_supported() -> bool:
+    # Blender versions differ; feature-detect with a dummy modifier
+    try:
+        tmp = bpy.data.objects.new("__tmp__", None)
+        bpy.context.scene.collection.objects.link(tmp)
+        mod = tmp.modifiers.new("tmp_bool", type="BOOLEAN")
+        ok = hasattr(mod, "operand_type")
+        # cleanup
+        bpy.data.objects.remove(tmp, do_unlink=True)
+        return ok
+    except Exception:
+        try:
+            bpy.data.objects.remove(tmp, do_unlink=True)
+        except Exception:
+            pass
+        return False
+
+
+def add_boolean_difference_to_frame(
+    frame_mesh_objects: list,
+    subtract_collection: bpy.types.Collection,
+    cfg: dict,
+):
+    """
+    Add a BOOLEAN(DIFFERENCE) modifier to each mesh object in frame_mesh_objects
+    using subtract_collection as the operand (when supported).
+    """
+    solver = str(cfg.get("solver", "EXACT")).upper()
+
+    for obj in frame_mesh_objects:
+        if obj.type != "MESH":
+            continue
+        mod = obj.modifiers.new(name="TRAIL_DIFF", type="BOOLEAN")
+        try:
+            mod.operation = "DIFFERENCE"
+        except Exception:
+            pass
+
+        # Prefer collection operands if available; else fall back to first object.
+        if hasattr(mod, "operand_type"):
+            try:
+                mod.operand_type = "COLLECTION"
+                mod.collection = subtract_collection
+            except Exception:
+                pass
+        else:
+            # Old blender: only single object operand
+            first = None
+            for o in subtract_collection.objects:
+                if o.type == "MESH":
+                    first = o
+                    break
+            if first is not None:
+                try:
+                    mod.object = first
+                except Exception:
+                    pass
+
+        # Solver setting (not present in all versions)
+        if hasattr(mod, "solver"):
+            try:
+                mod.solver = solver
+            except Exception:
+                pass
+
+
+# ----------------------------
 # Main build
 # ----------------------------
 
@@ -386,13 +422,28 @@ def build_layout(
     stage_objs: list,
     rig_names: dict,
     frames: list,
+    ghost_cfg: dict,
     base_location=(0.0, 0.0, 0.0),
     z_span_factor: float = 0.0,
-    ghost_trail: dict | None = None,
 ):
-    """Create one layout collection with per-frame duplicated stages."""
+    """
+    Create one layout collection with per-frame duplicated stages.
+
+    Structure:
+      TRIAL_STAGE__{layout}
+        ├── GHOST
+        │    ├── {layout}__F000__...
+        │    └── ...
+        └── FINAL
+             └── {layout}__F###__...
+    """
     top = bpy.data.collections.new(f"TRIAL_STAGE__{layout_name}")
     bpy.context.scene.collection.children.link(top)
+
+    col_ghost = bpy.data.collections.new(f"{layout_name}__GHOST")
+    col_final = bpy.data.collections.new(f"{layout_name}__FINAL")
+    top.children.link(col_ghost)
+    top.children.link(col_final)
 
     # Find template rig objects by name inside the appended stage set
     tmpl_root = next((o for o in stage_objs if o.name == rig_names["root_name"]), None)
@@ -405,23 +456,76 @@ def build_layout(
             f"Needed: {rig_names}. Found root={tmpl_root}, yaw={tmpl_yaw}, pitch={tmpl_pitch}"
         )
 
+    frames_sorted = sorted(frames, key=lambda f: int(f["frame"]))
+    n = len(frames_sorted)
+    last_frame_id = int(frames_sorted[-1]["frame"]) if n else 0
+
     # Compute Z span from geometry so the "time as Z" spacing adapts to asset scale
     z_total = 0.0
     if z_span_factor and z_span_factor != 0.0:
         z_span = compute_world_bbox_z_span(stage_objs)
         z_total = z_span * float(z_span_factor)
 
-    # Ghost trail parameters
-    ghost_enabled = bool(ghost_trail and ghost_trail.get("enabled", False))
-    alpha_first = float(ghost_trail.get("alpha_first", 0.15)) if ghost_enabled else 1.0
-    alpha_pre_last = float(ghost_trail.get("alpha_pre_last", 0.85)) if ghost_enabled else 1.0
+    # Ghost settings
+    ghost_enabled = bool(ghost_cfg.get("enabled", False))
+    alpha_first = float(ghost_cfg.get("alpha_first", 0.15))
+    alpha_pre_last = float(ghost_cfg.get("alpha_pre_last", 0.85))
+    # Material behavior
+    ghost_mat_cfg = {
+        "blend_method": ghost_cfg.get("blend_method", "HASHED"),
+        "shadow_method": ghost_cfg.get("shadow_method", "HASHED"),
+        "use_backface_culling": ghost_cfg.get("use_backface_culling", True),
+        "suffix": ghost_cfg.get("material_suffix", "__ghost"),
+    }
+    use_material_copies = bool(ghost_cfg.get("use_material_copies", True))
+    final_uses_original_materials = bool(ghost_cfg.get("final_uses_original_materials", True))
 
-    n = len(frames)
-    for f in frames:
-        idx = int(f["frame"])
+    # Optional: hide some objects in ghost frames by name match
+    hide_name_contains = [str(s) for s in ghost_cfg.get("ghost_hide_name_contains", [])]
 
-        frame_col = bpy.data.collections.new(f"{layout_name}__F{idx:03d}__{f.get('phase', '')}")
-        top.children.link(frame_col)
+    # Optional: boolean difference
+    diff_cfg = ghost_cfg.get("difference_boolean", {}) or {}
+    diff_enabled = bool(diff_cfg.get("enabled", False))
+
+    ghost_material_cache = {}
+
+    # Keep references to per-frame mesh objects for optional boolean logic
+    per_frame_mesh_objects = {}  # frame_id -> [mesh objs]
+    per_frame_col = {}           # frame_id -> frame collection
+
+    # Precompute alpha per frame (by order, not absolute frame_id gaps)
+    alpha_by_frame = {}
+    if ghost_enabled and n >= 1:
+        if n == 1:
+            alpha_by_frame[int(frames_sorted[0]["frame"])] = 1.0
+        elif n == 2:
+            # 1 ghost + final
+            alpha_by_frame[int(frames_sorted[0]["frame"])] = alpha_first
+            alpha_by_frame[int(frames_sorted[1]["frame"])] = 1.0
+        else:
+            for i, fr in enumerate(frames_sorted):
+                fid = int(fr["frame"])
+                if i == n - 1:
+                    alpha = 1.0
+                else:
+                    # map i in [0, n-2] => alpha in [alpha_first, alpha_pre_last]
+                    t = i / max(1, (n - 2))
+                    alpha = alpha_first + t * (alpha_pre_last - alpha_first)
+                alpha_by_frame[fid] = float(alpha)
+    else:
+        for fr in frames_sorted:
+            alpha_by_frame[int(fr["frame"])] = 1.0
+
+    # Build frames
+    for fr in frames_sorted:
+        idx = int(fr["frame"])
+        is_last = idx == last_frame_id
+
+        parent_col = col_final if is_last else col_ghost
+
+        frame_col = bpy.data.collections.new(f"{layout_name}__F{idx:03d}__{fr.get('phase','')}")
+        parent_col.children.link(frame_col)
+        per_frame_col[idx] = frame_col
 
         mapping = duplicate_objects_linked(stage_objs, frame_col)
 
@@ -436,31 +540,97 @@ def build_layout(
         # Place the whole stage
         z_off = 0.0
         if z_total and n > 1:
-            z_off = z_total * (idx / (n - 1))
+            # normalized by ORDER, not absolute frame id
+            order_i = next((i for i, ff in enumerate(frames_sorted) if int(ff["frame"]) == idx), 0)
+            z_off = z_total * (order_i / (n - 1))
 
         inst_root.location = Vector(base_location) + Vector((0.0, 0.0, z_off))
 
         # Stash useful per-frame metadata
         inst_root["frame"] = idx
-        inst_root["t_norm"] = float(f.get("t_norm", idx / max(1, n - 1)))
-        inst_root["phase"] = f.get("phase", "")
-        inst_root["yaw_deg"] = float(f.get("yaw_deg", 0.0))
-        inst_root["pitch_deg"] = float(f.get("pitch_deg", 0.0))
+        inst_root["t_norm"] = float(fr.get("t_norm", idx / max(1, n - 1)))
+        inst_root["phase"] = fr.get("phase", "")
+        inst_root["yaw_deg"] = float(fr.get("yaw_deg", 0.0))
+        inst_root["pitch_deg"] = float(fr.get("pitch_deg", 0.0))
 
-        # Apply yaw/pitch deltas (about each empty's local Z)
+        # Apply yaw/pitch deltas
         apply_local_z_delta_deg(
-            inst_yaw, float(f.get("yaw_deg", 0.0)) * float(rig_names.get("yaw_sign", 1.0))
+            inst_yaw,
+            float(fr.get("yaw_deg", 0.0)) * float(rig_names.get("yaw_sign", 1.0)),
         )
         apply_local_z_delta_deg(
             inst_pitch,
-            float(f.get("pitch_deg", 0.0)) * float(rig_names.get("pitch_sign", 1.0)),
+            float(fr.get("pitch_deg", 0.0)) * float(rig_names.get("pitch_sign", 1.0)),
         )
 
-        # Ghost trail: per-instance alpha (applies to all mesh objects in the duplicated stage)
-        if ghost_enabled:
-            alpha = compute_trail_alpha(idx, n, alpha_first, alpha_pre_last)
-            inst_root["alpha"] = float(alpha)
-            set_instance_alpha(mapping, alpha)
+        # Apply ghost alpha/materials to duplicated objects (not the template)
+        alpha = float(alpha_by_frame.get(idx, 1.0))
+
+        frame_meshes = []
+        for old, new in mapping.items():
+            if new.type != "MESH":
+                continue
+
+            # Optional: hide certain objects in ghost frames to reduce clutter
+            if (not is_last) and hide_name_contains:
+                nm = new.name.lower()
+                if any(s.lower() in nm for s in hide_name_contains):
+                    new.hide_render = True
+                    new.hide_viewport = True
+                    continue
+
+            frame_meshes.append(new)
+
+            if ghost_enabled:
+                new["ghost_alpha"] = alpha
+                # Use RGB = alpha so ObjectInfo.Color.R carries the alpha scalar.
+                try:
+                    new.color = (alpha, alpha, alpha, 1.0)
+                except Exception:
+                    pass
+
+                if (not is_last) and use_material_copies:
+                    assign_ghost_materials(new, ghost_material_cache, ghost_mat_cfg)
+
+                if is_last and final_uses_original_materials:
+                    # Make sure final frame is not accidentally using ghost materials
+                    # (e.g., if user disabled material copies). Ensure object color is white.
+                    try:
+                        new.color = (1.0, 1.0, 1.0, 1.0)
+                    except Exception:
+                        pass
+
+        per_frame_mesh_objects[idx] = frame_meshes
+
+    # Optional: boolean difference (unique volume trail)
+    if ghost_enabled and diff_enabled and n >= 2:
+        # Build "subtract collections" for each ghost frame:
+        #   SUBTRACT_AFTER_Fi contains all mesh objects from frames with id > i
+        # Then add BOOLEAN(DIFFERENCE) modifiers to frame i mesh objects.
+        col_bool = bpy.data.collections.new(f"{layout_name}__BOOL_SUBTRACT")
+        top.children.link(col_bool)
+        col_bool.hide_viewport = True
+        col_bool.hide_render = True
+
+        # Determine ordered frame ids
+        frame_ids = [int(fr["frame"]) for fr in frames_sorted]
+
+        for i, fid in enumerate(frame_ids[:-1]):  # exclude final
+            sub = bpy.data.collections.new(f"SUBTRACT_AFTER__F{fid:03d}")
+            col_bool.children.link(sub)
+            # link all later meshes into the operand collection
+            for later_fid in frame_ids[i + 1 :]:
+                for o in per_frame_mesh_objects.get(later_fid, []):
+                    try:
+                        sub.objects.link(o)
+                    except Exception:
+                        pass
+
+            add_boolean_difference_to_frame(
+                per_frame_mesh_objects.get(fid, []),
+                sub,
+                diff_cfg,
+            )
 
     return top
 
@@ -478,18 +648,13 @@ def main():
     rig = manifest["stage_rig"]
     layouts = manifest.get("layouts", {})
     frames = manifest["frames"]
-    ghost_trail = manifest.get("ghost_trail", {})
+
+    ghost_cfg = manifest.get("ghost_trail", {}) or {}
 
     export_col = append_export_collection(source["blend_path"], source["export_collection"])
 
     # Collect ALL objects under the appended export collection (recursively)
     stage_objs = list(iter_collection_objects_recursive(export_col))
-
-    # Optional: enable per-object alpha on all materials (preserves original materials)
-    if ghost_trail.get("enabled", False):
-        mats = collect_materials_from_objects(stage_objs)
-        for mat in mats:
-            ensure_material_object_alpha_mix(mat)
 
     # Hide the appended template export in renders (kept as a hidden template)
     export_col.hide_viewport = True
@@ -498,16 +663,18 @@ def main():
     want_stacked = args.layout in ("stacked", "both")
     want_timez = args.layout in ("timez", "both")
 
+    rig_cfg = {**rig, **{"yaw_sign": rig.get("yaw_sign", 1.0), "pitch_sign": rig.get("pitch_sign", 1.0)}}
+
     if want_stacked and layouts.get("stacked", {}).get("enabled", True):
         build_layout(
             "stacked",
             export_col,
             stage_objs,
-            {**rig, **{"yaw_sign": rig.get("yaw_sign", 1.0), "pitch_sign": rig.get("pitch_sign", 1.0)}},
+            rig_cfg,
             frames,
+            ghost_cfg,
             base_location=layouts.get("stacked", {}).get("base_location", (0.0, 0.0, 0.0)),
             z_span_factor=float(layouts.get("stacked", {}).get("z_span_factor", 0.0)),
-            ghost_trail=ghost_trail,
         )
 
     if want_timez and layouts.get("timez", {}).get("enabled", True):
@@ -515,11 +682,11 @@ def main():
             "timez",
             export_col,
             stage_objs,
-            {**rig, **{"yaw_sign": rig.get("yaw_sign", 1.0), "pitch_sign": rig.get("pitch_sign", 1.0)}},
+            rig_cfg,
             frames,
+            ghost_cfg,
             base_location=layouts.get("timez", {}).get("base_location", (0.0, 0.0, 0.0)),
-            z_span_factor=float(layouts.get("timez", {}).get("z_span_factor", 0.2)),
-            ghost_trail=ghost_trail,
+            z_span_factor=float(layouts.get("timez", {}).get("z_span_factor", 0.05)),
         )
 
     out_path = bpy.path.abspath(args.out)
