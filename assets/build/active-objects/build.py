@@ -408,24 +408,32 @@ def _make_corner_plane_mesh(
 
     plane_u = str(plane).upper()
     if plane_u == "XZ":
+        # XZ plane at y=0. Anchor corner at origin, grow into +X and +Z.
+        # IMPORTANT: Front face must point toward +Y (toward the isometric camera at +[1,1,1]).
         verts = [(0.0, 0.0, 0.0), (w, 0.0, 0.0), (w, 0.0, h), (0.0, 0.0, h)]
+        faces = [(0, 3, 2, 1)]  # flips the face normal to +Y
+        # UVs correspond to vertex order in `faces`
+        uvs = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]
     elif plane_u == "YZ":
+        # YZ plane at x=0. Anchor corner at origin, grow into +Y and +Z.
+        # Front face points toward +X.
         verts = [(0.0, 0.0, 0.0), (0.0, w, 0.0), (0.0, w, h), (0.0, 0.0, h)]
+        faces = [(0, 1, 2, 3)]
+        uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     else:
         raise ValueError(f"Unknown plane {plane!r} (expected 'XZ' or 'YZ')")
 
-    faces = [(0, 1, 2, 3)]
     mesh.clear_geometry()
     mesh.from_pydata(verts, [], faces)
     mesh.update()
 
-    uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     if flip_u:
         uvs = [(1.0 - u, v) for (u, v) in uvs]
     if flip_v:
         uvs = [(u, 1.0 - v) for (u, v) in uvs]
     _ensure_uv_layer(mesh, uvs)
     return mesh
+
 
 
 
@@ -1352,6 +1360,9 @@ def build_scene(
     schem_cfg = cfg.get("schematics", {}) if isinstance(cfg.get("schematics", {}), dict) else {}
     schem_defaults = schem_cfg.get("defaults", {}) if isinstance(schem_cfg.get("defaults", {}), dict) else {}
 
+    # Track the tallest wall schematic so we can place schematics.center above it
+    wall_max_z_mm: float = 0.0
+
     for side_key, default_plane in (("left", "XZ"), ("right", "YZ")):
         side_cfg = schem_cfg.get(side_key, {}) if isinstance(schem_cfg.get(side_key, {}), dict) else {}
         merged = merged_dict(schem_defaults, side_cfg)
@@ -1380,6 +1391,12 @@ def build_scene(
                     width_mm = float(merged.get("width_mm"))
                 except Exception:
                     width_mm = None
+
+        # Update wall height tracker (used for center-plane placement)
+        try:
+            wall_max_z_mm = max(wall_max_z_mm, float(height_mm) * float(merged.get("scale", 1.0)))
+        except Exception:
+            pass
 
         create_schematic_plane(
             f"SCHEM_{side_key.upper()}",
@@ -1411,9 +1428,17 @@ def build_scene(
             else:
                 img_abs_c = abspath_from_manifest(manifest_path, str(img_rel_c))
 
+                # ---- Size ----
                 size_mm_c = merged_c.get("size_mm", None)
                 width_mm_c: Optional[float] = None
-                height_mm_c: float = float(merged_c.get("height_mm", schem_defaults.get("height_mm", 300.0) if isinstance(schem_defaults, dict) else 300.0))
+
+                # If center height isn't explicitly provided, default to ~40% of the tallest wall schematic
+                default_h_from_walls = float(schem_defaults.get("height_mm", 300.0) if isinstance(schem_defaults, dict) else 300.0)
+                if wall_max_z_mm > 1e-6:
+                    default_h_from_walls = 0.4 * wall_max_z_mm
+
+                height_mm_c: float = float(merged_c.get("height_mm", default_h_from_walls))
+
                 if isinstance(size_mm_c, (list, tuple)) and len(size_mm_c) == 2:
                     width_mm_c = float(size_mm_c[0])
                     height_mm_c = float(size_mm_c[1])
@@ -1424,20 +1449,53 @@ def build_scene(
                         except Exception:
                             width_mm_c = None
 
-                z_mm = float(merged_c.get("z_mm", 0.0))
-                # Accept a few aliases
-                for kz in ("z_location_mm", "z_loc_mm", "z"):
+                # ---- Z placement ----
+                # Allow a few aliases (z_mm preferred). If not provided, default is 0 and we auto-raise (below).
+                z_mm: float = 0.0
+                z_set = False
+                for kz in ("z_mm", "z_location_mm", "z_loc_mm", "z"):
                     if kz in merged_c and merged_c.get(kz) is not None:
                         try:
                             z_mm = float(merged_c.get(kz))
+                            z_set = True
                         except Exception:
                             pass
                         break
 
+                # Camera direction (defaults to preview_camera.direction or +[1,1,1])
                 cam_dir = merged_c.get("camera_direction", None)
                 if cam_dir is None:
                     prev = cfg.get("preview_camera", {}) if isinstance(cfg.get("preview_camera", {}), dict) else {}
                     cam_dir = prev.get("direction", [1.0, 1.0, 1.0])
+
+                # ---- Ensure the center image is visible above the wall schematics ----
+                scale_c = float(merged_c.get("scale", 1.0))
+                h_center_eff_mm = float(height_mm_c) * scale_c
+                try:
+                    _x_axis, _y_axis, _n_axis = _camera_plane_basis(cam_dir)
+                    y_z = abs(float(_y_axis.z))
+                except Exception:
+                    y_z = 0.816496580927726  # default for +[1,1,1]
+
+                # Minimum center Z so the *bottom edge* clears the tallest wall top by a margin.
+                margin_mm = float(merged_c.get("above_walls_margin_mm", merged_c.get("margin_mm", 20.0)))
+                z_min_mm = float(wall_max_z_mm) + margin_mm + 0.5 * h_center_eff_mm * y_z
+
+                auto_raise = bool(merged_c.get("auto_raise_above_walls", True))
+                if auto_raise and z_mm < z_min_mm:
+                    if z_set:
+                        info(
+                            f"schematics.center: z_mm={z_mm:.3f} would sit inside/behind the wall schematics; "
+                            f"raising to {z_min_mm:.3f}. (Set auto_raise_above_walls=false to disable.)"
+                        )
+                    z_mm = z_min_mm
+                elif not auto_raise:
+                    bottom_z = z_mm - 0.5 * h_center_eff_mm * y_z
+                    if bottom_z < wall_max_z_mm - 1e-6:
+                        warn(
+                            f"schematics.center: z_mm={z_mm:.3f} places the image below the wall top "
+                            f"(wall_max_z_mm={wall_max_z_mm:.3f}). It may be occluded by the walls."
+                        )
 
                 create_center_schematic_plane(
                     "SCHEM_CENTER",
@@ -1446,7 +1504,7 @@ def build_scene(
                     camera_direction=cam_dir,
                     height_mm=height_mm_c,
                     width_mm=width_mm_c,
-                    scale=float(merged_c.get("scale", 1.0)),
+                    scale=scale_c,
                     emission_strength=float(merged_c.get("emission_strength", 1.0)),
                     interpolation=str(merged_c.get("interpolation", "Cubic")),
                     flip_u=bool(merged_c.get("flip_u", False)),
