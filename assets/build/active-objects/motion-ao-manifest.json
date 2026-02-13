@@ -22,11 +22,11 @@
       "collection": "SCHEMATICS"
     },
     "left": {
-      "image_path": "assets/images/mouse-joystick-pcb-yaw-motor.png",
+      "image_path": "assets/images/mouse-joystick-pcb-base-motor.png",
       "plane": "XZ"
     },
     "right": {
-      "image_path": "assets/images/mouse-joystick-pcb-pitch-motor.png",
+      "image_path": "assets/images/mouse-joystick-pcb-joystick-motor.png",
       "plane": "YZ"
     }
   },
@@ -112,6 +112,15 @@
           0.0
         ]
       }
+    },
+    "center": {
+      "enabled": true,
+      "image_path": "assets/images/MotionAO.png",
+      "z_mm": 500.0,
+      "scale": 1.0,
+      "height_mm": 140.0,
+      "flip_u": false,
+      "flip_v": false
     }
   },
   "preview_camera": {

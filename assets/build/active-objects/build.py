@@ -25,7 +25,7 @@ extra planes/cameras/geometry in the final saved file).
 It also:
 - Does NOT create a camera.
 - Deletes any scene cameras defensively.
-- Creates only the two schematic image planes (XZ and YZ).
+- Creates the two wall schematic image planes (XZ and YZ), and optionally a center image plane (schematics.center).
 
 Run (from repo root):
   blender -b --factory-startup --python assets/build/electrical_mechanical/build.py -- \
@@ -428,6 +428,46 @@ def _make_corner_plane_mesh(
     return mesh
 
 
+
+
+def _make_center_plane_mesh(
+    mesh_name: str,
+    *,
+    width_mm: float,
+    height_mm: float,
+    flip_u: bool,
+    flip_v: bool,
+) -> bpy.types.Mesh:
+    """Create a single-quad plane *centered at the origin* in local XY (z=0).
+
+    This is used for the optional schematics.center image, where the *image center*
+    is placed on the Z axis at a chosen z_mm and the plane is oriented to be
+    parallel to the isometric camera plane.
+    """
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
+
+    w = float(width_mm)
+    h = float(height_mm)
+    hw = 0.5 * w
+    hh = 0.5 * h
+
+    verts = [(-hw, -hh, 0.0), (hw, -hh, 0.0), (hw, hh, 0.0), (-hw, hh, 0.0)]
+    faces = [(0, 1, 2, 3)]
+
+    mesh.clear_geometry()
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+    uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    if flip_u:
+        uvs = [(1.0 - u, v) for (u, v) in uvs]
+    if flip_v:
+        uvs = [(u, 1.0 - v) for (u, v) in uvs]
+    _ensure_uv_layer(mesh, uvs)
+    return mesh
+
 def create_schematic_plane(
     name: str,
     *,
@@ -522,6 +562,186 @@ def create_schematic_plane(
 
 
 # ----------------------------
+
+
+# ----------------------------
+# Center image plane (optional)
+# ----------------------------
+
+def _normalize_vec3_any(v: Any, *, fallback: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> Vector:
+    """Best-effort conversion of an arbitrary value to a normalized Vector((x,y,z))."""
+    try:
+        if isinstance(v, Vector):
+            vv = Vector(v)
+        elif isinstance(v, (list, tuple)) and len(v) >= 3:
+            vv = Vector((float(v[0]), float(v[1]), float(v[2])))
+        else:
+            vv = Vector((float(fallback[0]), float(fallback[1]), float(fallback[2])))
+    except Exception:
+        vv = Vector((float(fallback[0]), float(fallback[1]), float(fallback[2])))
+
+    if vv.length < 1e-9:
+        vv = Vector((float(fallback[0]), float(fallback[1]), float(fallback[2])))
+
+    try:
+        vv.normalize()
+    except Exception:
+        vv = Vector((float(fallback[0]), float(fallback[1]), float(fallback[2]))).normalized()
+    return vv
+
+
+def _camera_plane_basis(camera_direction: Any) -> Tuple[Vector, Vector, Vector]:
+    """Return an orthonormal basis (x,y,n) for a plane parallel to the camera plane.
+
+    - n: plane normal pointing *toward* the camera (camera at +direction, looking toward origin)
+    - y: 'up' direction within the plane (world +Z projected into the plane), so the image stays upright
+    - x: horizontal direction within the plane (top/bottom edges)
+    """
+    n = _normalize_vec3_any(camera_direction, fallback=(1.0, 1.0, 1.0))
+
+    world_up = Vector((0.0, 0.0, 1.0))
+    y = world_up - n * world_up.dot(n)
+    if y.length < 1e-6:
+        # If camera is too close to vertical, fall back to projecting world Y
+        world_up = Vector((0.0, 1.0, 0.0))
+        y = world_up - n * world_up.dot(n)
+    if y.length < 1e-6:
+        world_up = Vector((1.0, 0.0, 0.0))
+        y = world_up - n * world_up.dot(n)
+
+    if y.length < 1e-9:
+        y = Vector((0.0, 0.0, 1.0))
+    else:
+        y.normalize()
+
+    x = y.cross(n)
+    if x.length < 1e-9:
+        x = n.cross(y)
+    if x.length < 1e-9:
+        x = Vector((1.0, 0.0, 0.0))
+    else:
+        x.normalize()
+
+    # Re-orthogonalize y to ensure a tight right-handed basis
+    y = n.cross(x)
+    if y.length > 1e-9:
+        y.normalize()
+
+    return (x, y, n)
+
+
+def create_center_schematic_plane(
+    name: str,
+    *,
+    image_path: str,
+    z_mm: float,
+    camera_direction: Any,
+    height_mm: float,
+    width_mm: Optional[float],
+    scale: float,
+    emission_strength: float,
+    interpolation: str,
+    flip_u: bool,
+    flip_v: bool,
+    parent_obj: Optional[bpy.types.Object],
+    target_collection: bpy.types.Collection,
+) -> Optional[bpy.types.Object]:
+    """Create a centered image plane whose center lies on the Z axis at (0,0,z_mm).
+
+    The plane is oriented to be parallel to the isometric camera plane (camera direction defaults to +[1,1,1]),
+    and its top/bottom edges are aligned with the camera plane horizontal (45° between X and Y for the default camera).
+    """
+    if not image_path:
+        warn(f"{name}: no image_path; skipping")
+        return None
+    if not os.path.exists(image_path):
+        warn(f"{name}: image not found: {image_path}")
+        return None
+
+    try:
+        img = bpy.data.images.load(image_path, check_existing=True)
+    except Exception as e:
+        warn(f"{name}: failed to load image {image_path}: {e!r}")
+        return None
+
+    px_w = float(getattr(img, "size", [0, 0])[0] or 0)
+    px_h = float(getattr(img, "size", [0, 0])[1] or 0)
+    if px_w <= 0 or px_h <= 0:
+        px_w, px_h = 1.0, 1.0
+
+    h_mm = float(height_mm) * float(scale)
+    if width_mm is not None:
+        w_mm = float(width_mm) * float(scale)
+    else:
+        aspect = px_w / px_h
+        w_mm = h_mm * aspect
+
+    mesh = _make_center_plane_mesh(
+        name + "_MESH",
+        width_mm=w_mm,
+        height_mm=h_mm,
+        flip_u=bool(flip_u),
+        flip_v=bool(flip_v),
+    )
+
+    obj = bpy.data.objects.get(name)
+    if obj is None:
+        obj = bpy.data.objects.new(name, mesh)
+        try:
+            target_collection.objects.link(obj)
+        except Exception:
+            bpy.context.scene.collection.objects.link(obj)
+    else:
+        obj.data = mesh
+
+    move_object_to_collection(obj, target_collection)
+
+    # Parent first (so setting matrix_world computes the correct local matrix)
+    if parent_obj is not None:
+        parent_keep_local(obj, parent_obj)
+
+    # Orient to camera plane and place center on Z axis
+    x_axis, y_axis, n_axis = _camera_plane_basis(camera_direction)
+    rot3 = Matrix((x_axis, y_axis, n_axis)).transposed()
+    world = Matrix.Translation(Vector((0.0, 0.0, float(z_mm)))) @ rot3.to_4x4()
+    try:
+        obj.matrix_world = world
+    except Exception:
+        # Fallback: set via euler + location
+        obj.location = Vector((0.0, 0.0, float(z_mm)))
+        try:
+            obj.rotation_euler = rot3.to_euler()
+        except Exception:
+            pass
+
+    mat = ensure_material_image_emission(
+        "MAT_" + name,
+        image_path,
+        emission_strength=float(emission_strength),
+        interpolation=str(interpolation),
+    )
+    if obj.data.materials:
+        obj.data.materials[0] = mat
+    else:
+        obj.data.materials.append(mat)
+
+    # Make it "graphic" (not participating in lighting)
+    try:
+        obj.visible_shadow = False
+    except Exception:
+        pass
+    try:
+        obj.cycles_visibility.camera = True
+        obj.cycles_visibility.diffuse = False
+        obj.cycles_visibility.glossy = False
+        obj.cycles_visibility.transmission = False
+        obj.cycles_visibility.shadow = False
+        obj.cycles_visibility.scatter = False
+    except Exception:
+        pass
+
+    return obj
+
 # External .blend collection import (robust)
 # ----------------------------
 
@@ -1175,6 +1395,66 @@ def build_scene(
             parent_obj=rig_root,
             target_collection=schem_subcol,
         )
+
+
+    # Optional center schematic (billboard aligned to the camera plane)
+    center_cfg = schem_cfg.get("center", {}) if isinstance(schem_cfg.get("center", {}), dict) else {}
+    if center_cfg:
+        merged_c = merged_dict(schem_defaults, center_cfg)
+
+        if not merged_c.get("enabled", True):
+            info("schematics.center: disabled")
+        else:
+            img_rel_c = merged_c.get("image_path") or merged_c.get("png") or merged_c.get("image")
+            if not img_rel_c:
+                warn("schematics.center: missing image_path")
+            else:
+                img_abs_c = abspath_from_manifest(manifest_path, str(img_rel_c))
+
+                size_mm_c = merged_c.get("size_mm", None)
+                width_mm_c: Optional[float] = None
+                height_mm_c: float = float(merged_c.get("height_mm", schem_defaults.get("height_mm", 300.0) if isinstance(schem_defaults, dict) else 300.0))
+                if isinstance(size_mm_c, (list, tuple)) and len(size_mm_c) == 2:
+                    width_mm_c = float(size_mm_c[0])
+                    height_mm_c = float(size_mm_c[1])
+                else:
+                    if "width_mm" in merged_c:
+                        try:
+                            width_mm_c = float(merged_c.get("width_mm"))
+                        except Exception:
+                            width_mm_c = None
+
+                z_mm = float(merged_c.get("z_mm", 0.0))
+                # Accept a few aliases
+                for kz in ("z_location_mm", "z_loc_mm", "z"):
+                    if kz in merged_c and merged_c.get(kz) is not None:
+                        try:
+                            z_mm = float(merged_c.get(kz))
+                        except Exception:
+                            pass
+                        break
+
+                cam_dir = merged_c.get("camera_direction", None)
+                if cam_dir is None:
+                    prev = cfg.get("preview_camera", {}) if isinstance(cfg.get("preview_camera", {}), dict) else {}
+                    cam_dir = prev.get("direction", [1.0, 1.0, 1.0])
+
+                create_center_schematic_plane(
+                    "SCHEM_CENTER",
+                    image_path=img_abs_c,
+                    z_mm=z_mm,
+                    camera_direction=cam_dir,
+                    height_mm=height_mm_c,
+                    width_mm=width_mm_c,
+                    scale=float(merged_c.get("scale", 1.0)),
+                    emission_strength=float(merged_c.get("emission_strength", 1.0)),
+                    interpolation=str(merged_c.get("interpolation", "Cubic")),
+                    flip_u=bool(merged_c.get("flip_u", False)),
+                    flip_v=bool(merged_c.get("flip_v", False)),
+                    parent_obj=rig_root,
+                    target_collection=schem_subcol,
+                )
+
 
     # ----------------
     # Components
