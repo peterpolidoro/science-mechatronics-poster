@@ -961,31 +961,53 @@ def _as_scale_vec(scale: Union[float, Sequence[float]]) -> Vector:
 
 
 def _find_dupli_anchor_world(inst_obj: bpy.types.Object, anchor_name: str) -> Optional[Vector]:
-    """Find world location of an anchor object inside a collection instance, using depsgraph dupli instances."""
+    """Best-effort: find world location of an object inside a collection instance via depsgraph.
+
+    Notes:
+    - For collection instances, the duplicated objects are not real scene objects.
+      They appear as entries in `depsgraph.object_instances`.
+    - Depending on Blender visibility settings, some objects (especially hidden rig empties)
+      may not appear here. In that case this function returns None.
+    """
     desired = base_name(anchor_name or "")
     if not desired:
         return None
+
     try:
         depsgraph = bpy.context.evaluated_depsgraph_get()
         depsgraph.update()
     except Exception:
         return None
 
+    # `depsgraph.object_instances[*].instance_object` might reference the *original*
+    # instancer object, not the evaluated one (varies by Blender version/settings).
+    inst_base_names = {base_name(getattr(inst_obj, "name", ""))}
+    inst_ids = {inst_obj}
     try:
         inst_eval = inst_obj.evaluated_get(depsgraph)
+        inst_ids.add(inst_eval)
+        inst_base_names.add(base_name(getattr(inst_eval, "name", "")))
     except Exception:
-        inst_eval = inst_obj
+        inst_eval = None
+
+    def _is_this_instancer(candidate: Optional[bpy.types.Object]) -> bool:
+        if candidate is None:
+            return False
+        if candidate in inst_ids:
+            return True
+        return base_name(getattr(candidate, "name", "")) in inst_base_names
 
     try:
         for oi in depsgraph.object_instances:
             if not getattr(oi, "is_instance", False):
                 continue
-            # oi.instance_object is the object that is doing instancing (collection instance empty)
+
             instancer = getattr(oi, "instance_object", None)
-            if instancer is None:
+            parent = getattr(oi, "parent", None)
+
+            if not (_is_this_instancer(instancer) or _is_this_instancer(parent)):
                 continue
-            if instancer != inst_eval:
-                continue
+
             obj = getattr(oi, "object", None)
             if obj is None:
                 continue
@@ -996,6 +1018,7 @@ def _find_dupli_anchor_world(inst_obj: bpy.types.Object, anchor_name: str) -> Op
                     return Vector((oi.matrix_world[0][3], oi.matrix_world[1][3], oi.matrix_world[2][3]))
     except Exception:
         return None
+
     return None
 
 
