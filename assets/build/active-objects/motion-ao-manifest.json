@@ -47,11 +47,18 @@
         "blend": "assets/compiled/blend/pcb.blend",
         "blend_collection": "EXPORT_pcb_yaw_axis_ctrl",
         "location_mm": [
-          30.0,
-          90.0,
+          -150.0,
+          150.0,
           0.0
         ],
-        "scale": 3.0
+        "scale": 3.0,
+        "rotation_deg": [
+          0.0,
+          0.0,
+          180.0
+        ],
+        "pivot_mode": "OBJECT",
+        "anchor_object": "RIG_PCB_G_YAW_AXIS_CTRL"
       },
       "mechanical": {
         "enabled": true,
@@ -62,7 +69,12 @@
           90.0,
           0.0
         ],
-        "scale": 1.5
+        "scale": 1.5,
+        "rotation_deg": [
+          0.0,
+          0.0,
+          0.0
+        ]
       }
     },
     "right": {
@@ -75,7 +87,12 @@
           120.0,
           0.0
         ],
-        "scale": 8.0
+        "scale": 8.0,
+        "rotation_deg": [
+          0.0,
+          0.0,
+          180.0
+        ]
       },
       "mechanical": {
         "enabled": false,
@@ -86,13 +103,18 @@
           320.0,
           0.0
         ],
-        "scale": 1.0
+        "scale": 1.0,
+        "rotation_deg": [
+          0.0,
+          0.0,
+          0.0
+        ]
       }
     }
   },
   "preview_camera": {
     "enabled": true,
-    "name": "CAM_ElectroMechIso",
+    "name": "CAM_ActiveObjectIso",
     "distance_mm": 1200.0,
     "direction": [
       1.0,

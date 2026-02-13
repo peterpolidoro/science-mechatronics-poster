@@ -208,23 +208,16 @@ clean:
 	rm -rf "$(OUT_DIR)"/*
 
 # Build/update the blend assets
-.PHONY: motion-blend
-motion-blend:
-	$(BLENDER_BG) --python assets/build/electrical_mechanical/build.py -- \
-	assets/build/electrical_mechanical/motion-manifest.json \
-	--output assets/compiled/blend/motion.blend
-
-.PHONY: motion-blend-debug
-motion-blend-debug:
-	$(BLENDER_BG) -b assets/compiled/blend/motion.blend \
-	--python tools/electrical_mechanical_debug_dump.py -- \
-	--manifest assets/build/electrical_mechanical/motion-manifest.json \
-	--out /tmp/motion_debug.json
+.PHONY: motion-ao-blend
+motion-ao-blend:
+	$(BLENDER_BG) --python assets/build/active-objects/build.py -- \
+	assets/build/active-objects/motion-ao-manifest.json \
+	--output assets/compiled/blend/motion-ao.blend --debug
 
 .PHONY: stage-blend
 stage-blend:
 	$(BLENDER_BG) --python assets/build/stage/build.py -- \
 	--manifest assets/build/stage/manifest.json \
 	--out assets/compiled/blend/stage.blend \
-	--layout both
+	--layout stacked
 
