@@ -214,21 +214,14 @@
       "space": "POSTER",
       "image_path": "../assets/images/title.png",
       "size_mm": [
-        1215.0,
+        1215,
         164.7
       ],
-      "fit_width": true,
-      "keep_aspect": true,
-      "anchor": [
-        "CENTER",
-        "TOP"
+      "poster_xy_mm": [
+        0.0,
+        451.05
       ],
-      "margin_mm": [
-        25.4,
-        25.4
-      ],
-      "z_mm": 2400.0,
-      "screen_lock": true,
+      "z_mm": 1.0,
       "emission_strength": 1.0
     },
     {
@@ -243,7 +236,7 @@
       ],
       "poster_xy_mm": [
         464.2,
-        -123.433
+        -104.35
       ],
       "z_mm": 2400.0,
       "screen_lock": true,
@@ -261,7 +254,7 @@
       ],
       "poster_xy_mm": [
         444.2,
-        157.817
+        176.9
       ],
       "z_mm": 2400.0,
       "screen_lock": true,
@@ -272,23 +265,23 @@
       "kind": "import_blend",
       "collection": "WORLD",
       "filepath": "../assets/compiled/blend/joystick.blend",
-      "blend_collection": "EXPORT_joystick",
+      "blend_collection": "SRC_joystick",
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
         0.0,
-        -430.0
+        -300.0
       ],
-      "distance_mm": 2400.0,
+      "distance_mm": 2000.0,
       "rotation_deg": [
-        0.0,
-        0.0,
-        -45.0
+        -90,
+        -45,
+        0
       ],
       "scale": [
-        1.0,
-        1.0,
-        1.0
+        1,
+        1,
+        1
       ],
       "import_scale": 1.0
     },
@@ -297,14 +290,14 @@
       "kind": "import_blend",
       "collection": "WORLD",
       "filepath": "../assets/compiled/blend/pcb.blend",
-      "blend_collection": "EXPORT_pcb",
+      "blend_collection": "SRC_pcb",
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        -450.0,
-        -430.0
+        -400.0,
+        -400.0
       ],
-      "distance_mm": 2400.0,
+      "distance_mm": 2000.0,
       "rotation_deg": [
         0.0,
         0.0,
