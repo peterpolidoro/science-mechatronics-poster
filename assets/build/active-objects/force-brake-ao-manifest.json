@@ -1,7 +1,7 @@
 {
   "output": {
-    "blend_path": "assets/compiled/blend/motion-ao.blend",
-    "export_collection": "EXPORT_motion_ao",
+    "blend_path": "assets/compiled/blend/force-brake-ao.blend",
+    "export_collection": "EXPORT_force_brake_ao",
     "pack_images": false,
     "compress": true
   },
@@ -25,35 +25,35 @@
       "electrical": {
         "enabled": true,
         "blend": "assets/compiled/blend/pcb.blend",
-        "blend_collection": "EXPORT_pcb_yaw_axis_ctrl",
+        "blend_collection": "EXPORT_pcb_torque_sensor",
         "location_mm": [
-          475.0,
-          100.0,
+          350.0,
+          25.0,
           0.0
         ],
         "scale": 3.0,
         "rotation_deg": [
           0.0,
           0.0,
-          180.0
+          90.0
         ],
         "pivot_mode": "OBJECT",
-        "anchor_object": "RIG_PCB_G_YAW_AXIS_CTRL"
+        "anchor_object": "RIG_PCB_G_TORQUE_SENSOR"
       },
       "mechanical": {
         "enabled": true,
         "blend": "assets/compiled/blend/joystick.blend",
-        "blend_collection": "EXPORT_joystick_yaw_axis_transducers",
+        "blend_collection": "EXPORT_joystick_torque_sensor",
         "location_mm": [
-          200.0,
           125.0,
-          0.0
+          200.0,
+          -100.0
         ],
         "scale": 1.5,
         "rotation_deg": [
           0.0,
           0.0,
-          -45.0
+          90.0
         ]
       }
     },
@@ -61,9 +61,9 @@
       "electrical": {
         "enabled": true,
         "blend": "assets/compiled/blend/pcb.blend",
-        "blend_collection": "EXPORT_pcb_pitch_axis_ctrl",
+        "blend_collection": "EXPORT_pcb_brake",
         "location_mm": [
-          175.0,
+          75.0,
           150.0,
           0.0
         ],
@@ -74,20 +74,20 @@
           0.0
         ],
         "pivot_mode": "OBJECT",
-        "anchor_object": "RIG_PCB_G_PITCH_AXIS_CTRL"
+        "anchor_object": "RIG_PCB_G_BRAKE"
       },
       "mechanical": {
         "enabled": true,
         "blend": "assets/compiled/blend/joystick.blend",
-        "blend_collection": "EXPORT_joystick_pitch_axis_transducers",
+        "blend_collection": "EXPORT_joystick_brake",
         "location_mm": [
-          50.0,
+          110.0,
           400.0,
-          -100.0
+          150.0
         ],
         "scale": 1.5,
         "rotation_deg": [
-          0.0,
+          135.0,
           0.0,
           0.0
         ]
@@ -123,17 +123,17 @@
       "collection": "SCHEMATICS"
     },
     "left": {
-      "image_path": "assets/images/mouse-joystick-pcb-base-motor.png",
+      "image_path": "assets/images/mouse-joystick-pcb-torque-sensor.png",
       "plane": "XZ",
       "flip_u": true
     },
     "right": {
-      "image_path": "assets/images/mouse-joystick-pcb-joystick-motor.png",
+      "image_path": "assets/images/mouse-joystick-pcb-brake.png",
       "plane": "YZ"
     },
     "center": {
       "enabled": true,
-      "image_path": "assets/images/MotionAO.png",
+      "image_path": "assets/images/ForceBrakeAO.png",
       "z_mm": 380.0,
       "height_mm": 120.0,
       "scale": 1.0,

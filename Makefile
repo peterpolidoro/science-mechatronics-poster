@@ -214,6 +214,12 @@ motion-ao-blend:
 	assets/build/active-objects/motion-ao-manifest.json \
 	--output assets/compiled/blend/motion-ao.blend --debug
 
+.PHONY: force-brake-ao-blend
+force-brake-ao-blend:
+	$(BLENDER_BG) --python assets/build/active-objects/build.py -- \
+	assets/build/active-objects/force-brake-ao-manifest.json \
+	--output assets/compiled/blend/force-brake-ao.blend --debug
+
 .PHONY: dump-image-planes
 dump-image-planes:
 	$(BLENDER_BG) -b assets/compiled/blend/motion-ao.blend \
