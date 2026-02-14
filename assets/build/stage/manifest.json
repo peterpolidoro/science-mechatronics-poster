@@ -56,16 +56,24 @@
   "ghost_trail": {
     "enabled": true,
     "alpha_first": 0.05,
-    "alpha_pre_last": 0.35,
-    "blend_method": "HASHED",
-    "shadow_method": "HASHED",
+    "alpha_pre_last": 0.25,
+    "notes": [
+      "Alpha uses per-object alpha via Object Info; original materials are preserved.",
+      "Linear ramp: frame 0 -> alpha_first, frame N-2 -> alpha_pre_last, frame N-1 forced to 1.0.",
+      "Recommended clarity preset: BLEND ghosts so they don't occlude the final in Eevee, no shadows, backface culling on.",
+      "Ghost frames hide common fasteners by name substring; tweak ghost_hide_name_contains for your asset."
+    ],
+    "blend_method": "BLEND",
+    "shadow_method": "NONE",
     "use_backface_culling": true,
     "use_material_copies": true,
     "final_uses_original_materials": true,
     "ghost_hide_name_contains": [
-      "MCMASTER",
       "SCREW",
-      "WASHER"
+      "WASHER",
+      "DOWEL",
+      "BALL",
+      "NEO"
     ],
     "difference_boolean": {
       "enabled": false,

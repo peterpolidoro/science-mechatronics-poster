@@ -29,8 +29,14 @@ Notes:
     (a "linked duplicate" style) so file size stays reasonable.
   - Applies yaw/pitch as a delta about each rig empty's local Z axis via
     quaternion multiplication, preserving any base alignment rotations.
-  - In Eevee, **Alpha Blend** materials do not write to depth. This script
-    defaults ghost materials to **Alpha Hashed** so alpha=1.0 behaves opaque.
+  - In Eevee, **Alpha Blend** materials do not write to depth (often desirable
+    here so ghost frames don't occlude the final). This script defaults ghost
+    materials to **Alpha Hashed** so alpha=1.0 behaves opaque.
+
+Compatibility:
+  - Blender versions differ in node IDs. "Separate RGB" may not be registered
+    (RuntimeError: ShaderNodeSeparateRGB undefined). We feature-detect and use
+    "Separate Color" (mode='RGB') instead when available.
 """
 
 import argparse
@@ -259,8 +265,36 @@ def _ensure_ghost_node_patch(mat: bpy.types.Material, cfg: dict):
     obj_info = nt.nodes.new("ShaderNodeObjectInfo")
     obj_info.location = (0, -200)
 
-    sep_rgb = nt.nodes.new("ShaderNodeSeparateRGB")
+    # NOTE (Blender 3.3+ / 4.x / 5.x): "Separate RGB" was replaced in the UI
+    # by "Separate Color" (mode='RGB'). Some versions/builds no longer
+    # register ShaderNodeSeparateRGB, which causes:
+    #   RuntimeError: Node type ShaderNodeSeparateRGB undefined
+    # So we feature-detect and fall back.
+    sep_rgb = None
+    sep_in = None
+    sep_out_r = None
+    try:
+        sep_rgb = nt.nodes.new("ShaderNodeSeparateColor")
+        # Ensure RGB channel split.
+        if hasattr(sep_rgb, "mode"):
+            try:
+                sep_rgb.mode = "RGB"
+            except Exception:
+                pass
+        # Shader node uses a Color input socket.
+        sep_in = sep_rgb.inputs.get("Color") or sep_rgb.inputs.get("Image")
+        sep_out_r = sep_rgb.outputs.get("R") or sep_rgb.outputs.get("Red")
+    except Exception:
+        sep_rgb = nt.nodes.new("ShaderNodeSeparateRGB")
+        sep_in = sep_rgb.inputs.get("Image")
+        sep_out_r = sep_rgb.outputs.get("R")
+
     sep_rgb.location = (200, -200)
+    # Extra safety for socket name differences.
+    if sep_in is None and len(sep_rgb.inputs):
+        sep_in = sep_rgb.inputs[0]
+    if sep_out_r is None and len(sep_rgb.outputs):
+        sep_out_r = sep_rgb.outputs[0]
 
     bsdf_transp = nt.nodes.new("ShaderNodeBsdfTransparent")
     bsdf_transp.location = (200, 80)
@@ -269,8 +303,8 @@ def _ensure_ghost_node_patch(mat: bpy.types.Material, cfg: dict):
     mix.location = (600, 0)
 
     # Wire: ObjectInfo.Color -> SeparateRGB -> R -> Mix.Fac
-    nt.links.new(obj_info.outputs.get("Color"), sep_rgb.inputs.get("Image"))
-    nt.links.new(sep_rgb.outputs.get("R"), mix.inputs.get("Fac"))
+    nt.links.new(obj_info.outputs.get("Color"), sep_in)
+    nt.links.new(sep_out_r, mix.inputs.get("Fac"))
 
     # Wire: Transparent -> Mix.Shader(1)
     nt.links.new(bsdf_transp.outputs.get("BSDF"), mix.inputs[1])
@@ -469,7 +503,11 @@ def build_layout(
     # Ghost settings
     ghost_enabled = bool(ghost_cfg.get("enabled", False))
     alpha_first = float(ghost_cfg.get("alpha_first", 0.15))
-    alpha_pre_last = float(ghost_cfg.get("alpha_pre_last", 0.85))
+    # The manifest originally used alpha_pre_last (meaning: the last GHOST frame).
+    # Accept alpha_last as an alias because it's easy to misremember.
+    alpha_pre_last = float(
+        ghost_cfg.get("alpha_pre_last", ghost_cfg.get("alpha_last", 0.85))
+    )
     # Material behavior
     ghost_mat_cfg = {
         "blend_method": ghost_cfg.get("blend_method", "HASHED"),
