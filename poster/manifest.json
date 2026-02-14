@@ -8,7 +8,8 @@
     "scale_length": 0.001
   },
   "poster": {
-    "size_mm": 1219.2,
+    "width_mm": 1219.2,
+    "height_mm": 1066.8,
     "ppi": 150,
     "safe_margin_mm": 25.4
   },
@@ -212,14 +213,9 @@
       "collection": "OVERLAY",
       "space": "POSTER",
       "image_path": "../assets/images/title.png",
-      "size_mm": [
-        1215,
-        164.7
-      ],
-      "poster_xy_mm": [
-        0.0,
-        525.15
-      ],
+      "fit_width": true,
+      "anchor": ["CENTER", "TOP"],
+      "margin_mm": [25.4, 25.4],
       "z_mm": 1.0,
       "emission_strength": 1.0
     },
