@@ -27,8 +27,8 @@
         "blend": "assets/compiled/blend/pcb.blend",
         "blend_collection": "EXPORT_pcb_yaw_axis_ctrl",
         "location_mm": [
-          500.0,
-          150.0,
+          475.0,
+          100.0,
           0.0
         ],
         "scale": 3.0,
@@ -45,8 +45,8 @@
         "blend": "assets/compiled/blend/joystick.blend",
         "blend_collection": "EXPORT_joystick_yaw_axis_transducers",
         "location_mm": [
-          225.0,
-          150.0,
+          200.0,
+          125.0,
           0.0
         ],
         "scale": 1.5,
@@ -63,8 +63,8 @@
         "blend": "assets/compiled/blend/pcb.blend",
         "blend_collection": "EXPORT_pcb_pitch_axis_ctrl",
         "location_mm": [
-          200.0,
-          180.0,
+          175.0,
+          150.0,
           0.0
         ],
         "scale": 3.0,
@@ -82,7 +82,7 @@
         "blend_collection": "EXPORT_joystick_pitch_axis_transducers",
         "location_mm": [
           50.0,
-          425.0,
+          400.0,
           -100.0
         ],
         "scale": 1.5,
@@ -124,7 +124,8 @@
     },
     "left": {
       "image_path": "assets/images/mouse-joystick-pcb-base-motor.png",
-      "plane": "XZ"
+      "plane": "XZ",
+      "flip_u": true
     },
     "right": {
       "image_path": "assets/images/mouse-joystick-pcb-joystick-motor.png",
