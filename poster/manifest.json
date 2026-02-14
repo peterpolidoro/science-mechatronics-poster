@@ -214,14 +214,21 @@
       "space": "POSTER",
       "image_path": "../assets/images/title.png",
       "size_mm": [
-        1215,
+        1215.0,
         164.7
       ],
-      "poster_xy_mm": [
-        0.0,
-        451.05
+      "fit_width": true,
+      "keep_aspect": true,
+      "anchor": [
+        "CENTER",
+        "TOP"
       ],
-      "z_mm": 1.0,
+      "margin_mm": [
+        25.4,
+        25.4
+      ],
+      "z_mm": 2400.0,
+      "screen_lock": true,
       "emission_strength": 1.0
     },
     {
@@ -236,7 +243,7 @@
       ],
       "poster_xy_mm": [
         464.2,
-        -104.35
+        -123.433
       ],
       "z_mm": 2400.0,
       "screen_lock": true,
@@ -254,7 +261,7 @@
       ],
       "poster_xy_mm": [
         444.2,
-        176.9
+        157.817
       ],
       "z_mm": 2400.0,
       "screen_lock": true,
@@ -270,18 +277,18 @@
       "space": "POSTER",
       "poster_xy_mm": [
         0.0,
-        -470.0
+        -430.0
       ],
-      "distance_mm": 2000.0,
+      "distance_mm": 2400.0,
       "rotation_deg": [
-        0,
-        0,
-        -45
+        0.0,
+        0.0,
+        -45.0
       ],
       "scale": [
-        1,
-        1,
-        1
+        1.0,
+        1.0,
+        1.0
       ],
       "import_scale": 1.0
     },
@@ -294,10 +301,10 @@
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        -520.0,
-        -470.0
+        -450.0,
+        -430.0
       ],
-      "distance_mm": 2000.0,
+      "distance_mm": 2400.0,
       "rotation_deg": [
         0.0,
         0.0,
