@@ -25,7 +25,7 @@ extra planes/cameras/geometry in the final saved file).
 It also:
 - Does NOT create a camera.
 - Deletes any scene cameras defensively.
-- Creates the two wall schematic image planes (XZ and YZ), and optionally a center image plane (schematics.center).
+- Creates the two wall schematic image planes (XZ and YZ), and optionally a center image plane (images.center).
 
 Run (from repo root):
   blender -b --factory-startup --python assets/build/electrical_mechanical/build.py -- \
@@ -409,10 +409,11 @@ def _make_corner_plane_mesh(
     plane_u = str(plane).upper()
     if plane_u == "XZ":
         # XZ plane at y=0. Anchor corner at origin, grow into +X and +Z.
-        # IMPORTANT: Front face must point toward +Y (toward the isometric camera at +[1,1,1]).
-        verts = [(0.0, 0.0, 0.0), (w, 0.0, 0.0), (w, 0.0, h), (0.0, 0.0, h)]
-        faces = [(0, 3, 2, 1)]  # flips the face normal to +Y
-        # UVs correspond to vertex order in `faces`
+        # Front face must point toward +Y (toward the isometric camera at +[1,1,1]).
+        # Use CCW vertex order as seen from +Y.
+        verts = [(0.0, 0.0, 0.0), (0.0, 0.0, h), (w, 0.0, h), (w, 0.0, 0.0)]
+        faces = [(0, 1, 2, 3)]  # normal +Y
+        # UVs match vertex order above: origin->(0,0), +Z->(0,1), +X+Z->(1,1), +X->(1,0)
         uvs = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]
     elif plane_u == "YZ":
         # YZ plane at x=0. Anchor corner at origin, grow into +Y and +Z.
@@ -448,7 +449,7 @@ def _make_center_plane_mesh(
 ) -> bpy.types.Mesh:
     """Create a single-quad plane *centered at the origin* in local XY (z=0).
 
-    This is used for the optional schematics.center image, where the *image center*
+    This is used for the optional images.center image, where the *image center*
     is placed on the Z axis at a chosen z_mm and the plane is oriented to be
     parallel to the isometric camera plane.
     """
@@ -1357,10 +1358,10 @@ def build_scene(
     # ----------------
     # Schematics
     # ----------------
-    schem_cfg = cfg.get("schematics", {}) if isinstance(cfg.get("schematics", {}), dict) else {}
+    schem_cfg = cfg.get("images", None) if isinstance(cfg.get("images", None), dict) else (cfg.get("schematics", {}) if isinstance(cfg.get("schematics", {}), dict) else {})
     schem_defaults = schem_cfg.get("defaults", {}) if isinstance(schem_cfg.get("defaults", {}), dict) else {}
 
-    # Track the tallest wall schematic so we can place schematics.center above it
+    # Track the tallest wall schematic so we can place images.center above it
     wall_max_z_mm: float = 0.0
 
     for side_key, default_plane in (("left", "XZ"), ("right", "YZ")):
@@ -1368,14 +1369,14 @@ def build_scene(
         merged = merged_dict(schem_defaults, side_cfg)
 
         if not merged.get("enabled", True):
-            info(f"schematics.{side_key}: disabled")
+            info(f"images.{side_key}: disabled")
             continue
 
         plane = str(merged.get("plane", default_plane)).upper()
 
         img_rel = merged.get("image_path") or merged.get("png") or merged.get("image")
         if not img_rel:
-            warn(f"schematics.{side_key}: missing image_path")
+            warn(f"images.{side_key}: missing image_path")
             continue
         img_abs = abspath_from_manifest(manifest_path, str(img_rel))
 
@@ -1415,8 +1416,8 @@ def build_scene(
 
 
     # Optional center schematic (billboard aligned to the camera plane)
-    # Center schematic (optional). Preferred location: schematics.center
-    # Legacy compatibility: if schematics.center is missing, also accept components.center (warn).
+    # Center schematic (optional). Preferred location: images.center
+    # Legacy compatibility: if images.center is missing, also accept components.center (warn).
     center_cfg: Dict[str, Any] = {}
     _center_raw = schem_cfg.get("center", None) if isinstance(schem_cfg, dict) else None
     if isinstance(_center_raw, dict):
@@ -1427,18 +1428,18 @@ def build_scene(
         if isinstance(_legacy_center, dict):
             center_cfg = _legacy_center
             warn(
-                "Found center image config under components.center; please move it under schematics.center "
+                "Found center image config under components.center; please move it under images.center "
                 "(legacy compatibility in use)."
             )
     if center_cfg:
         merged_c = merged_dict(schem_defaults, center_cfg)
 
         if not merged_c.get("enabled", True):
-            info("schematics.center: disabled")
+            info("images.center: disabled")
         else:
             img_rel_c = merged_c.get("image_path") or merged_c.get("png") or merged_c.get("image")
             if not img_rel_c:
-                warn("schematics.center: missing image_path")
+                warn("images.center: missing image_path")
             else:
                 img_abs_c = abspath_from_manifest(manifest_path, str(img_rel_c))
 
@@ -1499,7 +1500,7 @@ def build_scene(
                 if auto_raise and z_mm < z_min_mm:
                     if z_set:
                         info(
-                            f"schematics.center: z_mm={z_mm:.3f} would sit inside/behind the wall schematics; "
+                            f"images.center: z_mm={z_mm:.3f} would sit inside/behind the wall schematics; "
                             f"raising to {z_min_mm:.3f}. (Set auto_raise_above_walls=false to disable.)"
                         )
                     z_mm = z_min_mm
@@ -1507,7 +1508,7 @@ def build_scene(
                     bottom_z = z_mm - 0.5 * h_center_eff_mm * y_z
                     if bottom_z < wall_max_z_mm - 1e-6:
                         warn(
-                            f"schematics.center: z_mm={z_mm:.3f} places the image below the wall top "
+                            f"images.center: z_mm={z_mm:.3f} places the image below the wall top "
                             f"(wall_max_z_mm={wall_max_z_mm:.3f}). It may be occluded by the walls."
                         )
 
