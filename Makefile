@@ -214,6 +214,13 @@ motion-ao-blend:
 	assets/build/active-objects/motion-ao-manifest.json \
 	--output assets/compiled/blend/motion-ao.blend --debug
 
+.PHONY: dump-image-planes
+dump-image-planes:
+	$(BLENDER_BG) -b assets/compiled/blend/motion-ao.blend \
+	--python tools/dump_image_planes.py -- \
+	--out /tmp/planes_dump.json \
+	--collection EXPORT_motion
+
 .PHONY: stage-blend
 stage-blend:
 	$(BLENDER_BG) --python assets/build/stage/build.py -- \

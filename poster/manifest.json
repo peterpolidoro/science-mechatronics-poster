@@ -213,9 +213,14 @@
       "collection": "OVERLAY",
       "space": "POSTER",
       "image_path": "../assets/images/title.png",
-      "fit_width": true,
-      "anchor": ["CENTER", "TOP"],
-      "margin_mm": [25.4, 25.4],
+      "size_mm": [
+        1215,
+        164.7
+      ],
+      "poster_xy_mm": [
+        0.0,
+        451.05
+      ],
       "z_mm": 1.0,
       "emission_strength": 1.0
     },
@@ -230,20 +235,12 @@
         178.9
       ],
       "poster_xy_mm": [
-        -450.0,
-        -470.0
+        464.2,
+        -104.35
       ],
       "z_mm": 2400.0,
       "screen_lock": true,
-      "emission_strength": 1.0,
-      "aim_target_mm": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "aim_target_name": "EMPTY_WorldOrigin",
-      "aim_track_axis": "TRACK_NEGATIVE_Z",
-      "aim_up_axis": "UP_Y"
+      "emission_strength": 1.0
     },
     {
       "name": "paper",
@@ -256,20 +253,12 @@
         363.6
       ],
       "poster_xy_mm": [
-        420.0,
-        240.0
+        444.2,
+        176.9
       ],
       "z_mm": 2400.0,
       "screen_lock": true,
-      "emission_strength": 1.0,
-      "aim_target_mm": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "aim_target_name": "EMPTY_WorldOrigin",
-      "aim_track_axis": "TRACK_NEGATIVE_Z",
-      "aim_up_axis": "UP_Y"
+      "emission_strength": 1.0
     },
     {
       "name": "joystick",
@@ -278,11 +267,12 @@
       "filepath": "../assets/compiled/blend/joystick.blend",
       "blend_collection": "EXPORT_joystick",
       "link": true,
-      "location_mm": [
-        0,
-        0,
-        -250
+      "space": "POSTER",
+      "poster_xy_mm": [
+        0.0,
+        -470.0
       ],
+      "distance_mm": 2000.0,
       "rotation_deg": [
         0,
         0,
@@ -302,11 +292,12 @@
       "filepath": "../assets/compiled/blend/pcb.blend",
       "blend_collection": "EXPORT_pcb",
       "link": true,
-      "location_mm": [
-        0.0,
-        0.0,
-        0.0
+      "space": "POSTER",
+      "poster_xy_mm": [
+        -520.0,
+        -470.0
       ],
+      "distance_mm": 2000.0,
       "rotation_deg": [
         0.0,
         0.0,

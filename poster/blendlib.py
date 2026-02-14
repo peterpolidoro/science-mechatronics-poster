@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import bpy
-from mathutils import Euler, Vector
+from mathutils import Euler, Vector, Quaternion
 
 
 # ----------------------------
@@ -303,40 +303,28 @@ def ensure_material_image_emission(
 # ----------------------------
 
 def poster_plane_distance_mm(poster_width_mm: float, lens_mm: float, sensor_width_mm: float) -> float:
-    """Distance from camera origin to the poster image plane.
+    """Distance from camera to the reference "poster plane".
 
-    We use a perspective camera with sensor_fit='HORIZONTAL'. In that case, the
-    camera frustum width at distance d is:
+    With sensor_fit='HORIZONTAL', the camera's horizontal FOV is controlled by sensor_width.
+    We set the reference plane distance so that a plane of width `poster_width_mm` exactly
+    fills the render horizontally:
 
-        width = d * sensor_width / lens
-
-    so:
-
-        d = width * lens / sensor_width
-
-    For non-square posters, *poster_width_mm* is the horizontal poster dimension.
+        poster_width = d * sensor_width / lens  =>  d = poster_width * lens / sensor_width
     """
     return float(poster_width_mm) * float(lens_mm) / float(sensor_width_mm)
 
 
-def poster_dimensions_mm(cfg: Dict[str, Any]) -> Tuple[float, float, float]:
-    """Return (width_mm, height_mm, safe_margin_mm) from cfg.
+def get_poster_dims_mm(cfg: Dict[str, Any]) -> Tuple[float, float]:
+    """Return (width_mm, height_mm).
 
-    Backwards compatible:
-      - If cfg['poster'].width_mm/height_mm are present, use them.
-      - Else fall back to cfg['poster'].size_mm (square poster).
+    Backwards compatible with legacy manifests that used poster.size_mm for square posters.
     """
     poster = cfg.get("poster", {})
-    safe_margin_mm = float(poster.get("safe_margin_mm", 25.4))
-
-    if "width_mm" in poster or "height_mm" in poster:
-        w = float(poster.get("width_mm", poster.get("size_mm", 1219.2)))
-        h = float(poster.get("height_mm", poster.get("size_mm", 1219.2)))
-    else:
-        s = float(poster.get("size_mm", 1219.2))
-        w, h = s, s
-
-    return w, h, safe_margin_mm
+    if "width_mm" in poster and "height_mm" in poster:
+        return float(poster["width_mm"]), float(poster["height_mm"])
+    # Legacy: square
+    s = float(poster.get("size_mm", 1219.2))
+    return s, s
 
 
 def place_on_poster_plane(
@@ -350,97 +338,6 @@ def place_on_poster_plane(
     obj.matrix_parent_inverse = cam_obj.matrix_world.inverted()
     obj.location = Vector((float(poster_xy_mm[0]), float(poster_xy_mm[1]), -plane_distance_mm + float(z_mm)))
     obj.rotation_euler = Euler((0.0, 0.0, 0.0), 'XYZ')
-
-
-def poster_ray_dir_cam(poster_xy_mm: Sequence[float], plane_distance_mm: float) -> Vector:
-    """Ray direction in *camera local space* through a poster-plane point.
-
-    poster_xy_mm are in poster mm coordinates (0,0 is center) on the poster image plane.
-    """
-    v = Vector((float(poster_xy_mm[0]), float(poster_xy_mm[1]), -float(plane_distance_mm)))
-    if v.length <= 1e-9:
-        return Vector((0.0, 0.0, -1.0))
-    return v.normalized()
-
-
-def place_on_poster_ray(
-    obj: bpy.types.Object,
-    cam_obj: bpy.types.Object,
-    plane_distance_mm: float,
-    poster_xy_mm: Sequence[float],
-    *,
-    distance_mm: float,
-) -> None:
-    """Parent obj to camera and place it along the view ray at a given camera distance."""
-    obj.parent = cam_obj
-    obj.matrix_parent_inverse = cam_obj.matrix_world.inverted()
-    d = float(distance_mm)
-    if d < 1e-6:
-        d = 1e-6
-    obj.location = poster_ray_dir_cam(poster_xy_mm, plane_distance_mm) * d
-
-
-def _quat_from_view_dir(
-    desired_cam_dir_asset: Vector,
-    desired_up_asset: Vector,
-    actual_cam_dir_parent: Vector,
-    *,
-    parent_up: Vector = Vector((0.0, 1.0, 0.0)),
-    roll_deg: float = 0.0,
-) -> "mathutils.Quaternion":
-    """Quaternion mapping asset-local vectors into parent space.
-
-    We interpret desired_cam_dir_asset as the direction from the asset origin *to the camera*
-    in asset-local coordinates.
-
-    actual_cam_dir_parent is the direction from the asset origin *to the camera* in parent
-    (camera-local if parent is camera) coordinates.
-
-    The quaternion returned rotates asset-local space into parent space.
-    """
-    from mathutils import Quaternion  # local import (Blender)
-
-    a = Vector(desired_cam_dir_asset)
-    if a.length <= 1e-9:
-        a = Vector((0.0, 0.0, 1.0))
-    a.normalize()
-
-    b = Vector(actual_cam_dir_parent)
-    if b.length <= 1e-9:
-        b = Vector((0.0, 0.0, 1.0))
-    b.normalize()
-
-    q = a.rotation_difference(b)
-
-    # Roll alignment: rotate around b so that (q @ desired_up_asset) aligns to parent_up.
-    up_a = Vector(desired_up_asset)
-    if up_a.length <= 1e-9:
-        up_a = Vector((0.0, 0.0, 1.0))
-    up_a.normalize()
-
-    up1 = (q @ up_a)
-    if up1.length > 1e-9:
-        up1.normalize()
-
-    up2 = Vector(parent_up)
-    if up2.length > 1e-9:
-        up2.normalize()
-
-    # Project onto plane perpendicular to b
-    up1p = up1 - b * up1.dot(b)
-    up2p = up2 - b * up2.dot(b)
-    if up1p.length > 1e-6 and up2p.length > 1e-6:
-        up1p.normalize()
-        up2p.normalize()
-        # Signed angle from up1p -> up2p about axis b
-        cross = up1p.cross(up2p)
-        ang = math.atan2(b.dot(cross), up1p.dot(up2p))
-        q = Quaternion(b, ang) @ q
-
-    if roll_deg:
-        q = Quaternion(b, math.radians(float(roll_deg))) @ q
-
-    return q
 
 
 # ----------------------------
@@ -736,8 +633,8 @@ def apply_cycles_settings(cfg: Dict[str, Any]) -> None:
 
 def apply_render_settings(
     cfg: Dict[str, Any],
-    poster_width_in: float,
-    poster_height_in: float,
+    poster_w_in: float,
+    poster_h_in: float,
     ppi_override: Optional[float] = None,
 ) -> None:
     scene = bpy.context.scene
@@ -759,10 +656,11 @@ def apply_render_settings(
     scene.render.image_settings.color_depth = str(r.get("color_depth", "16"))
 
     ppi = float(ppi_override) if ppi_override is not None else float(cfg.get("poster", {}).get("ppi", 150))
-    res_x = int(round(float(poster_width_in) * ppi))
-    res_y = int(round(float(poster_height_in) * ppi))
-    scene.render.resolution_x = max(1, res_x)
-    scene.render.resolution_y = max(1, res_y)
+
+    res_x = int(round(float(poster_w_in) * ppi))
+    res_y = int(round(float(poster_h_in) * ppi))
+    scene.render.resolution_x = res_x
+    scene.render.resolution_y = res_y
     scene.render.resolution_percentage = 100
 
     # If we are in Cycles, apply cycles settings
@@ -807,7 +705,8 @@ def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, flo
     poster = cfg.get("poster", {})
     cam_cfg = cfg.get("camera", {})
 
-    poster_w_mm, poster_h_mm, safe_margin_mm = poster_dimensions_mm(cfg)
+    poster_w_mm, poster_h_mm = get_poster_dims_mm(cfg)
+    safe_margin_mm = float(poster.get("safe_margin_mm", 25.4))
 
     cam = ensure_camera(cam_cfg.get("name", "CAM_Poster"))
     cam.data.type = 'PERSP'
@@ -1091,88 +990,11 @@ def ensure_backdrop(obj_cfg: Dict[str, Any]) -> bpy.types.Object:
 # Overlay objects
 # ----------------------------
 
-def _as_xy(v: Any, *, default: Tuple[float, float] = (0.0, 0.0)) -> Tuple[float, float]:
-    if isinstance(v, (list, tuple)) and len(v) >= 2:
-        try:
-            return float(v[0]), float(v[1])
-        except Exception:
-            return default
-    if isinstance(v, (int, float)):
-        f = float(v)
-        return f, f
-    return default
-
-
-def _parse_anchor(anchor: Any) -> Tuple[str, str]:
-    """Parse an anchor specification into (h_anchor, v_anchor).
-
-    Supported forms:
-      - "TOP" | "BOTTOM" | "LEFT" | "RIGHT" | "CENTER"
-      - ["LEFT"|"CENTER"|"RIGHT", "BOTTOM"|"CENTER"|"TOP"]
-    """
-    if isinstance(anchor, str):
-        a = anchor.strip().upper()
-        if a in {"TOP", "BOTTOM", "CENTER"}:
-            return "CENTER", a
-        if a in {"LEFT", "RIGHT"}:
-            return a, "CENTER"
-        return "CENTER", "CENTER"
-
-    if isinstance(anchor, (list, tuple)) and len(anchor) >= 2:
-        h = str(anchor[0]).strip().upper()
-        v = str(anchor[1]).strip().upper()
-        if h not in {"LEFT", "CENTER", "RIGHT"}:
-            h = "CENTER"
-        if v not in {"BOTTOM", "CENTER", "TOP"}:
-            v = "CENTER"
-        return h, v
-
-    return "CENTER", "CENTER"
-
-
-def _poster_xy_from_anchor(
-    *,
-    anchor: Any,
-    size_mm: Tuple[float, float],
-    poster_w_mm: float,
-    poster_h_mm: float,
-    margin_mm: Tuple[float, float] = (0.0, 0.0),
-    offset_mm: Tuple[float, float] = (0.0, 0.0),
-) -> Tuple[float, float]:
-    """Compute poster_xy_mm for a rectangle centered inside the poster."""
-    w_mm, h_mm = float(size_mm[0]), float(size_mm[1])
-    half_w = float(poster_w_mm) * 0.5
-    half_h = float(poster_h_mm) * 0.5
-    mx, my = float(margin_mm[0]), float(margin_mm[1])
-    ox, oy = float(offset_mm[0]), float(offset_mm[1])
-
-    h_anchor, v_anchor = _parse_anchor(anchor)
-
-    if h_anchor == "LEFT":
-        x = -half_w + mx + (w_mm * 0.5)
-    elif h_anchor == "RIGHT":
-        x = half_w - mx - (w_mm * 0.5)
-    else:
-        x = 0.0
-
-    if v_anchor == "BOTTOM":
-        y = -half_h + my + (h_mm * 0.5)
-    elif v_anchor == "TOP":
-        y = half_h - my - (h_mm * 0.5)
-    else:
-        y = 0.0
-
-    return x + ox, y + oy
-
 def ensure_image_plane(
     obj_cfg: Dict[str, Any],
     manifest_path: str | Path,
     cam_obj: bpy.types.Object,
     poster_plane_distance: float,
-    *,
-    poster_w_mm: float,
-    poster_h_mm: float,
-    safe_margin_mm: float,
 ) -> bpy.types.Object:
     """Create/update an image plane.
 
@@ -1187,14 +1009,6 @@ def ensure_image_plane(
        Extra optional keys (POSTER):
          poster_xy_mm: [x_mm, y_mm] on the poster (0,0 is center)
          size_mm: [w_mm, h_mm] on the poster
-         anchor: "TOP"|"BOTTOM"|"LEFT"|"RIGHT"|"CENTER" or [h,v]
-         margin_mm: number or [mx,my] (used with anchor/fit); default uses safe_margin_mm
-         offset_mm: [dx,dy] (used with anchor)
-         fit_width: bool (if true, set width to poster_w_mm - 2*margin_x)
-         fit_height: bool (if true, set height to poster_h_mm - 2*margin_y)
-         maintain_aspect: bool (default true) when fit_width/fit_height compute the other dim
-         height_mm: explicit height when fit_width is true (optional)
-         width_mm: explicit width when fit_height is true (optional)
          z_mm: distance offset toward the camera (mm). Larger -> closer to camera.
          screen_lock: bool (default true) keep screen size/position constant when z_mm != 0.
          aim_target_mm: [x,y,z] world-space point the plane's normal line passes through
@@ -1217,12 +1031,6 @@ def ensure_image_plane(
 
     # Material
     img_path = abspath_from_manifest(manifest_path, obj_cfg["image_path"])
-    # Also load image datablock now so we can optionally compute aspect ratio.
-    img = None
-    try:
-        img = bpy.data.images.load(img_path, check_existing=True)
-    except Exception:
-        img = None
     strength = float(obj_cfg.get("emission_strength", 1.0))
     mat = ensure_material_image_emission("MAT_" + name, img_path, emission_strength=strength)
     if obj.data.materials:
@@ -1247,47 +1055,8 @@ def ensure_image_plane(
     except Exception:
         pass
 
-    # Placement / sizing
-    # 1) Explicit size_mm: [w,h]
-    # 2) Or fit_width / fit_height (optional maintain_aspect using the source image)
-    w_mm, h_mm = 100.0, 100.0
-    if "size_mm" in obj_cfg:
-        w0, h0 = obj_cfg.get("size_mm", [100.0, 100.0])
-        w_mm, h_mm = float(w0), float(h0)
-    else:
-        margin_xy = _as_xy(obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm))
-        mx, my = float(margin_xy[0]), float(margin_xy[1])
-
-        fit_w = bool(obj_cfg.get("fit_width", False)) or (str(obj_cfg.get("fit", "")).upper() == "WIDTH")
-        fit_h = bool(obj_cfg.get("fit_height", False)) or (str(obj_cfg.get("fit", "")).upper() == "HEIGHT")
-        keep_aspect = bool(obj_cfg.get("maintain_aspect", True))
-
-        # Prefer fit_width if both are set.
-        if fit_w:
-            w_mm = float(obj_cfg.get("width_mm", (float(poster_w_mm) - 2.0 * mx)))
-            if "height_mm" in obj_cfg:
-                h_mm = float(obj_cfg.get("height_mm"))
-            elif keep_aspect and img is not None and getattr(img, "size", None):
-                try:
-                    px_w = float(img.size[0])
-                    px_h = float(img.size[1])
-                    if px_w > 1e-6:
-                        h_mm = w_mm * (px_h / px_w)
-                except Exception:
-                    pass
-        elif fit_h:
-            h_mm = float(obj_cfg.get("height_mm", (float(poster_h_mm) - 2.0 * my)))
-            if "width_mm" in obj_cfg:
-                w_mm = float(obj_cfg.get("width_mm"))
-            elif keep_aspect and img is not None and getattr(img, "size", None):
-                try:
-                    px_w = float(img.size[0])
-                    px_h = float(img.size[1])
-                    if px_h > 1e-6:
-                        w_mm = h_mm * (px_w / px_h)
-                except Exception:
-                    pass
-
+    # Placement
+    w_mm, h_mm = obj_cfg.get("size_mm", [100.0, 100.0])
     w_mm = float(w_mm)
     h_mm = float(h_mm)
 
@@ -1308,45 +1077,9 @@ def ensure_image_plane(
 
         obj.scale = Vector((w_mm * f, h_mm * f, 1.0))
 
-        # Poster position: explicit poster_xy_mm OR anchor-based placement.
-        if "poster_xy_mm" in obj_cfg:
-            poster_xy = obj_cfg.get("poster_xy_mm", [0.0, 0.0])
-            base_px = float(poster_xy[0])
-            base_py = float(poster_xy[1])
-        elif "anchor" in obj_cfg:
-            # If the user is anchoring and didn't specify margin_mm, default to safe margin.
-            margin_xy = _as_xy(obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm))
-            offset_xy = _as_xy(obj_cfg.get("offset_mm", None), default=(0.0, 0.0))
-            base_px, base_py = _poster_xy_from_anchor(
-                anchor=obj_cfg.get("anchor"),
-                size_mm=(w_mm, h_mm),
-                poster_w_mm=poster_w_mm,
-                poster_h_mm=poster_h_mm,
-                margin_mm=margin_xy,
-                offset_mm=offset_xy,
-            )
-        else:
-            base_px, base_py = 0.0, 0.0
-
-        # Store on-poster layout info for optional overlap checking/debug boxes.
-        try:
-            root["poster_layout_xy_mm"] = (float(base_px), float(base_py))
-            if "layout_size_mm" in obj_cfg:
-                ls = obj_cfg.get("layout_size_mm", [0.0, 0.0])
-                if isinstance(ls, (list, tuple)) and len(ls) >= 2:
-                    root["poster_layout_size_mm"] = (float(ls[0]), float(ls[1]))
-        except Exception:
-            pass
-
-        # Store on-poster layout info for optional overlap checking/debug boxes.
-        try:
-            obj["poster_layout_xy_mm"] = (float(base_px), float(base_py))
-            obj["poster_layout_size_mm"] = (float(w_mm), float(h_mm))
-        except Exception:
-            pass
-
-        px = base_px * f if screen_lock else base_px
-        py = base_py * f if screen_lock else base_py
+        poster_xy = obj_cfg.get("poster_xy_mm", [0.0, 0.0])
+        px = float(poster_xy[0]) * f if screen_lock else float(poster_xy[0])
+        py = float(poster_xy[1]) * f if screen_lock else float(poster_xy[1])
 
         place_on_poster_plane(obj, cam_obj, poster_plane_distance, [px, py], z_mm)
 
@@ -1397,15 +1130,6 @@ def ensure_image_plane(
         scale_xyz = [w_mm * float(sc[0]), h_mm * float(sc[1]), float(sc[2])]
 
         set_world_transform(obj, loc, rot, scale_xyz)
-
-        # Clear poster layout custom props if present.
-        try:
-            if "poster_layout_xy_mm" in obj:
-                del obj["poster_layout_xy_mm"]
-            if "poster_layout_size_mm" in obj:
-                del obj["poster_layout_size_mm"]
-        except Exception:
-            pass
 
     return obj
 
@@ -1569,18 +1293,6 @@ def ensure_text_object(
 
     space = str(obj_cfg.get("space", "WORLD")).upper()
     if space == "POSTER":
-        # Store optional layout info for overlap checking/debug boxes.
-        try:
-            obj["poster_layout_xy_mm"] = (
-                float(obj_cfg.get("poster_xy_mm", [0.0, 0.0])[0]),
-                float(obj_cfg.get("poster_xy_mm", [0.0, 0.0])[1]),
-            )
-            if "layout_size_mm" in obj_cfg:
-                ls = obj_cfg.get("layout_size_mm", [0.0, 0.0])
-                if isinstance(ls, (list, tuple)) and len(ls) >= 2:
-                    obj["poster_layout_size_mm"] = (float(ls[0]), float(ls[1]))
-        except Exception:
-            pass
         place_on_poster_plane(
             obj,
             cam_obj,
@@ -1589,14 +1301,6 @@ def ensure_text_object(
             float(obj_cfg.get("z_mm", 0.0)),
         )
     else:
-        # Clear poster layout props if present.
-        try:
-            if "poster_layout_xy_mm" in obj:
-                del obj["poster_layout_xy_mm"]
-            if "poster_layout_size_mm" in obj:
-                del obj["poster_layout_size_mm"]
-        except Exception:
-            pass
         set_world_transform(
             obj,
             obj_cfg.get("location_mm", [0.0, 0.0, 0.0]),
@@ -1688,29 +1392,27 @@ def ensure_imported_blend_asset(
     manifest_path: str | Path,
     *,
     cam_obj: Optional[bpy.types.Object] = None,
-    poster_plane_distance: Optional[float] = None,
-    poster_w_mm: Optional[float] = None,
-    poster_h_mm: Optional[float] = None,
-    safe_margin_mm: float = 0.0,
+    poster_plane_distance_mm: Optional[float] = None,
 ) -> bpy.types.Object:
     """Instance a collection from an external .blend file into the scene.
 
-    Supports both:
-      - space="WORLD" (default): uses location_mm/rotation_deg/scale
-      - space="POSTER": places the asset using poster coordinates relative to the poster camera.
+    Placement modes:
+    - space="WORLD" (default): uses location_mm/rotation_deg/scale
+    - space="POSTER": places the asset origin at poster_xy_mm in the rendered poster,
+      at a specified camera distance (distance_mm). This lets you lay out 3D assets in
+      poster coordinates just like image planes.
 
-    POSTER placement fields (recommended):
-      poster_xy_mm: [x,y] on the poster (mm, origin at center)
-      distance_mm: camera distance along the ray through (x,y) on the poster plane
+    Optional "view" block (for either space):
 
-    Alternative POSTER placement (legacy-style):
-      z_mm + screen_lock (like image planes) place a single point near the poster plane.
+      "view": {
+        "dir": [1,1,1],   # direction from asset origin TO the camera, in asset-local axes
+        "up":  [0,0,1],   # asset-local 'up' vector used to resolve roll (default +Z)
+        "roll_deg": 0
+      }
 
-    View/orientation (optional):
-      view: {dir:[dx,dy,dz], up:[ux,uy,uz], roll_deg:0}
-        - dir is the direction from the asset origin TO the camera in asset-local coords.
-        - up defines the asset's "up" for roll alignment.
-      rotation_deg: extra local rotation applied AFTER view alignment.
+    If provided, the asset is rotated so that `view.dir` points toward the actual poster
+    camera position, and its roll is chosen to keep `view.up` aligned with the camera's up.
+    The manifest rotation_deg is then applied as an extra local tweak.
     """
     name = obj_cfg["name"]
     parent_col_name = obj_cfg.get("collection", "WORLD")
@@ -1723,6 +1425,12 @@ def ensure_imported_blend_asset(
     root = ensure_empty(name, [0.0, 0.0, 0.0])
     root.hide_render = True
     move_object_to_collection(root, helpers_col)
+
+    # Determinism: ensure it is not parented to something from an older scene
+    try:
+        root.parent = None
+    except Exception:
+        pass
 
     # Clear previous instancers/objects in the ASSET collection
     remove_collection_objects(asset_col)
@@ -1764,282 +1472,98 @@ def ensure_imported_blend_asset(
     except Exception:
         pass
 
+    space = str(obj_cfg.get("space", "WORLD")).upper()
+
+    # --- Location ---
+    loc = obj_cfg.get("location_mm", [0.0, 0.0, 0.0])
+    if space == "POSTER" and cam_obj is not None and poster_plane_distance_mm is not None:
+        poster_xy = obj_cfg.get("poster_xy_mm", [0.0, 0.0])
+
+        # distance from camera to the asset origin along the camera ray
+        dist = obj_cfg.get("distance_mm", None)
+        if dist is None and "z_mm" in obj_cfg:
+            # mirror image_plane convention: z_mm is offset toward the camera from the reference plane
+            dist = float(poster_plane_distance_mm) - float(obj_cfg.get("z_mm", 0.0))
+        if dist is None:
+            dist = float(poster_plane_distance_mm)
+
+        dist = float(dist)
+        if dist <= 1e-6:
+            dist = 1e-6
+
+        # Similar triangles: convert poster-plane coordinates to camera-local coordinates at this depth
+        x_cam = float(poster_xy[0]) * (dist / float(poster_plane_distance_mm))
+        y_cam = float(poster_xy[1]) * (dist / float(poster_plane_distance_mm))
+        cam_local = Vector((x_cam, y_cam, -dist))
+        world_loc = cam_obj.matrix_world @ cam_local
+        loc = [float(world_loc.x), float(world_loc.y), float(world_loc.z)]
+
+    # --- Rotation ---
+    rot = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
+
+    view_cfg = obj_cfg.get("view", None)
+    if isinstance(view_cfg, dict) and cam_obj is not None:
+        # Direction from asset -> camera, expressed in asset-local coordinates
+        v_local = Vector(view_cfg.get("dir", [0.0, 0.0, 1.0]))
+        if v_local.length < 1e-6:
+            v_local = Vector((0.0, 0.0, 1.0))
+        v_local.normalize()
+
+        up_local = Vector(view_cfg.get("up", [0.0, 0.0, 1.0]))
+        if up_local.length < 1e-6:
+            up_local = Vector((0.0, 0.0, 1.0))
+        up_local.normalize()
+
+        # Actual direction in world space from asset -> camera
+        cam_world = cam_obj.matrix_world.to_translation()
+        root_world = Vector(loc)
+        v_world = cam_world - root_world
+        if v_world.length < 1e-6:
+            v_world = Vector((0.0, 0.0, 1.0))
+        v_world.normalize()
+
+        # First rotate view.dir into the world direction
+        q_align = v_local.rotation_difference(v_world)
+
+        # Then rotate around v_world to align up vectors (resolve roll)
+        cam_up_world = cam_obj.matrix_world.to_quaternion() @ Vector((0.0, 1.0, 0.0))
+        up1 = q_align @ up_local
+
+        axis = v_world
+        up1p = up1 - axis * up1.dot(axis)
+        upp = cam_up_world - axis * cam_up_world.dot(axis)
+        q_roll = Quaternion((1.0, 0.0, 0.0), 0.0)
+        if up1p.length > 1e-6 and upp.length > 1e-6:
+            up1p.normalize()
+            upp.normalize()
+            ang = up1p.angle(upp)
+            # sign via right-hand rule around axis
+            if up1p.cross(upp).dot(axis) < 0.0:
+                ang = -ang
+            q_roll = Quaternion(axis, ang)
+
+        roll_deg = float(view_cfg.get("roll_deg", 0.0))
+        q_user_roll = Quaternion(axis, math.radians(roll_deg))
+
+        q_view = q_user_roll @ (q_roll @ q_align)
+
+        # Apply manifest rotation_deg as an extra local tweak AFTER view alignment
+        q_tweak = Euler([math.radians(v) for v in rot], 'XYZ').to_quaternion()
+        q_final = q_view @ q_tweak
+        rot = q_final.to_euler('XYZ')
     sc = obj_cfg.get("scale", [1.0, 1.0, 1.0])
     import_scale = float(obj_cfg.get("import_scale", 1.0))
     sc2 = [float(sc[0]) * import_scale, float(sc[1]) * import_scale, float(sc[2]) * import_scale]
 
-    space = str(obj_cfg.get("space", "WORLD")).upper()
-    if space == "POSTER":
-        if cam_obj is None or poster_plane_distance is None:
-            raise ValueError("import_blend with space='POSTER' requires cam_obj and poster_plane_distance")
-
-        # Parent the root to the poster camera so poster coordinates remain stable.
-        root.parent = cam_obj
-        root.matrix_parent_inverse = cam_obj.matrix_world.inverted()
-
-        # Placement target on poster
-        if "poster_xy_mm" in obj_cfg:
-            poster_xy = obj_cfg.get("poster_xy_mm", [0.0, 0.0])
-            base_px, base_py = float(poster_xy[0]), float(poster_xy[1])
-        elif "anchor" in obj_cfg and (poster_w_mm is not None) and (poster_h_mm is not None):
-            # Anchor requires a notion of object size; use layout_size_mm if provided.
-            layout_sz = obj_cfg.get("layout_size_mm", None)
-            if isinstance(layout_sz, (list, tuple)) and len(layout_sz) >= 2:
-                w_l, h_l = float(layout_sz[0]), float(layout_sz[1])
-            else:
-                w_l, h_l = 0.0, 0.0
-            margin_xy = _as_xy(obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm))
-            offset_xy = _as_xy(obj_cfg.get("offset_mm", None), default=(0.0, 0.0))
-            base_px, base_py = _poster_xy_from_anchor(
-                anchor=obj_cfg.get("anchor"),
-                size_mm=(w_l, h_l),
-                poster_w_mm=float(poster_w_mm),
-                poster_h_mm=float(poster_h_mm),
-                margin_mm=margin_xy,
-                offset_mm=offset_xy,
-            )
-        else:
-            base_px, base_py = 0.0, 0.0
-
-        # Position root either by ray distance (preferred) or by z_mm (legacy-style).
-        if "distance_mm" in obj_cfg:
-            dist_mm = float(obj_cfg.get("distance_mm", float(poster_plane_distance)))
-            place_on_poster_ray(
-                root,
-                cam_obj,
-                float(poster_plane_distance),
-                [base_px, base_py],
-                distance_mm=dist_mm,
-            )
-        else:
-            z_mm = float(obj_cfg.get("z_mm", 0.0))
-            screen_lock = bool(obj_cfg.get("screen_lock", True))
-
-            f = 1.0
-            if screen_lock:
-                d_ref = float(poster_plane_distance)
-                d_actual = d_ref - z_mm
-                if d_actual <= 1e-6:
-                    d_actual = 1e-6
-                f = d_actual / d_ref
-            root.location = Vector((base_px * f, base_py * f, -float(poster_plane_distance) + z_mm))
-
-        # Orientation
-        view_cfg = obj_cfg.get("view", None)
-        view_dir = None
-        view_up = None
-        view_roll = 0.0
-        if isinstance(view_cfg, dict):
-            view_dir = view_cfg.get("dir", view_cfg.get("direction", None))
-            view_up = view_cfg.get("up", view_cfg.get("up_dir", None))
-            view_roll = float(view_cfg.get("roll_deg", 0.0))
-        else:
-            view_dir = obj_cfg.get("view_dir", None)
-            view_up = obj_cfg.get("view_up", None)
-
-        rot_deg = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
-
-        if view_dir is not None:
-            desired_cam_dir_asset = Vector(view_dir)
-            desired_up_asset = Vector(view_up) if view_up is not None else Vector((0.0, 0.0, 1.0))
-            actual_cam_dir_parent = (-root.location)
-            if actual_cam_dir_parent.length <= 1e-9:
-                actual_cam_dir_parent = Vector((0.0, 0.0, 1.0))
-            q_view = _quat_from_view_dir(
-                desired_cam_dir_asset,
-                desired_up_asset,
-                actual_cam_dir_parent,
-                parent_up=Vector((0.0, 1.0, 0.0)),
-                roll_deg=view_roll,
-            )
-
-            # Apply extra rotation in asset local coordinates
-            q_off = Euler([math.radians(v) for v in rot_deg], 'XYZ').to_quaternion()
-            q_final = q_view @ q_off
-            try:
-                root.rotation_mode = 'QUATERNION'
-                root.rotation_quaternion = q_final
-            except Exception:
-                root.rotation_euler = q_final.to_euler('XYZ')
-        else:
-            # No view: interpret rotation_deg as a camera-relative rotation.
-            try:
-                root.rotation_mode = 'XYZ'
-            except Exception:
-                pass
-            root.rotation_euler = Euler([math.radians(v) for v in rot_deg], 'XYZ')
-
-        # Scale
+    # If we computed a Quaternion/Euler above, rot may be an Euler already.
+    if isinstance(rot, Euler):
+        root.location = Vector(loc)
+        root.rotation_euler = rot
         root.scale = Vector(sc2)
-
     else:
-        # WORLD space placement (default)
-        try:
-            root.parent = None
-        except Exception:
-            pass
-
-        # Clear poster layout custom props if present.
-        try:
-            if "poster_layout_xy_mm" in root:
-                del root["poster_layout_xy_mm"]
-            if "poster_layout_size_mm" in root:
-                del root["poster_layout_size_mm"]
-        except Exception:
-            pass
-
-        loc = obj_cfg.get("location_mm", [0.0, 0.0, 0.0])
-        rot = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
         set_world_transform(root, loc, rot, sc2)
 
     return root
-
-
-# ----------------------------
-# Poster layout diagnostics (optional)
-# ----------------------------
-
-def _iter_layout_boxes_from_scene() -> List[Tuple[str, float, float, float, float]]:
-    """Collect (name, cx, cy, w, h) for objects that expose poster_layout_* custom props."""
-    out: List[Tuple[str, float, float, float, float]] = []
-    for obj in bpy.data.objects:
-        if ("poster_layout_xy_mm" not in obj) or ("poster_layout_size_mm" not in obj):
-            continue
-        try:
-            cx, cy = obj["poster_layout_xy_mm"]
-            w, h = obj["poster_layout_size_mm"]
-            cx, cy = float(cx), float(cy)
-            w, h = float(w), float(h)
-        except Exception:
-            continue
-        if w <= 0.0 or h <= 0.0:
-            continue
-        out.append((obj.name, cx, cy, w, h))
-    return out
-
-
-def _rect_from_center(cx: float, cy: float, w: float, h: float, *, pad: float = 0.0) -> Tuple[float, float, float, float]:
-    p = float(pad)
-    hw = float(w) * 0.5 + p
-    hh = float(h) * 0.5 + p
-    return (cx - hw, cx + hw, cy - hh, cy + hh)  # x0,x1,y0,y1
-
-
-def _overlap_area(r1: Tuple[float, float, float, float], r2: Tuple[float, float, float, float]) -> float:
-    x0 = max(r1[0], r2[0])
-    x1 = min(r1[1], r2[1])
-    y0 = max(r1[2], r2[2])
-    y1 = min(r1[3], r2[3])
-    if x1 <= x0 or y1 <= y0:
-        return 0.0
-    return float(x1 - x0) * float(y1 - y0)
-
-
-def _remove_objects_by_prefix(prefix: str) -> None:
-    for obj in list(bpy.data.objects):
-        if obj.name.startswith(prefix):
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-            except Exception:
-                pass
-
-
-def _ensure_layout_box_plane(
-    name: str,
-    *,
-    cam_obj: bpy.types.Object,
-    poster_plane_distance: float,
-    center_xy_mm: Tuple[float, float],
-    size_mm: Tuple[float, float],
-    z_mm: float = 0.25,
-) -> bpy.types.Object:
-    """Create a non-rendering wireframe plane showing a reserved layout box."""
-    obj_name = f"LAYOUTBOX_{name}"
-    obj = bpy.data.objects.get(obj_name)
-    if obj is None:
-        mesh = ensure_plane_mesh(obj_name + "_MESH")
-        obj = bpy.data.objects.new(obj_name, mesh)
-        bpy.context.scene.collection.objects.link(obj)
-
-    obj.display_type = 'WIRE'
-    obj.hide_render = True
-    try:
-        obj.show_in_front = True
-    except Exception:
-        pass
-
-    w, h = float(size_mm[0]), float(size_mm[1])
-    obj.scale = Vector((w, h, 1.0))
-
-    place_on_poster_plane(obj, cam_obj, float(poster_plane_distance), [float(center_xy_mm[0]), float(center_xy_mm[1])], float(z_mm))
-    try:
-        move_object_to_collection(obj, ensure_collection("HELPERS"))
-    except Exception:
-        pass
-    return obj
-
-
-def run_layout_diagnostics(
-    *,
-    cfg: Dict[str, Any],
-    cam_obj: bpy.types.Object,
-    poster_plane_distance: float,
-    poster_w_mm: float,
-    poster_h_mm: float,
-    safe_margin_mm: float,
-) -> None:
-    """Optional overlap checks + debug box visualization."""
-    layout = cfg.get("layout", {})
-    if not isinstance(layout, dict):
-        return
-
-    check = bool(layout.get("check_overlaps", False))
-    debug = bool(layout.get("debug_boxes", False))
-    if not (check or debug):
-        return
-
-    pad = float(layout.get("padding_mm", 0.0))
-    boxes = _iter_layout_boxes_from_scene()
-
-    if check:
-        # Safe area in poster coords
-        half_w = float(poster_w_mm) * 0.5
-        half_h = float(poster_h_mm) * 0.5
-        safe_w = max(1.0, float(poster_w_mm) - 2.0 * float(safe_margin_mm))
-        safe_h = max(1.0, float(poster_h_mm) - 2.0 * float(safe_margin_mm))
-        safe = _rect_from_center(0.0, 0.0, safe_w, safe_h, pad=0.0)
-
-        for (n, cx, cy, w, h) in boxes:
-            r = _rect_from_center(cx, cy, w, h, pad=pad)
-            # Outside full poster
-            if r[0] < -half_w or r[1] > half_w or r[2] < -half_h or r[3] > half_h:
-                print(f"[layout] WARN: '{n}' extends outside poster bounds")
-            # Outside safe area
-            if r[0] < safe[0] or r[1] > safe[1] or r[2] < safe[2] or r[3] > safe[3]:
-                print(f"[layout] WARN: '{n}' extends outside safe area (margin={safe_margin_mm}mm)")
-
-        # Pairwise overlap checks
-        for i in range(len(boxes)):
-            n1, x1, y1, w1, h1 = boxes[i]
-            r1 = _rect_from_center(x1, y1, w1, h1, pad=pad)
-            for j in range(i + 1, len(boxes)):
-                n2, x2, y2, w2, h2 = boxes[j]
-                r2 = _rect_from_center(x2, y2, w2, h2, pad=pad)
-                area = _overlap_area(r1, r2)
-                if area > 0.0:
-                    print(f"[layout] WARN: overlap '{n1}' vs '{n2}' (area≈{area:.1f} mm^2, pad={pad}mm)")
-
-    if debug:
-        _remove_objects_by_prefix("LAYOUTBOX_")
-        for (n, cx, cy, w, h) in boxes:
-            _ensure_layout_box_plane(
-                n,
-                cam_obj=cam_obj,
-                poster_plane_distance=float(poster_plane_distance),
-                center_xy_mm=(float(cx), float(cy)),
-                size_mm=(float(w), float(h)),
-                z_mm=float(layout.get("z_mm", 0.25)),
-            )
 
 # ----------------------------
 # Main entrypoint
@@ -2059,13 +1583,10 @@ def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] =
     apply_units(cfg)
     apply_world_settings(cfg)
 
-    poster_w_mm, poster_h_mm, _safe_margin_mm = poster_dimensions_mm(cfg)
-    apply_render_settings(
-        cfg,
-        poster_width_in=(poster_w_mm / 25.4),
-        poster_height_in=(poster_h_mm / 25.4),
-        ppi_override=ppi_override,
-    )
+    poster_w_mm, poster_h_mm = get_poster_dims_mm(cfg)
+    poster_w_in = poster_w_mm / 25.4
+    poster_h_in = poster_h_mm / 25.4
+    apply_render_settings(cfg, poster_w_in, poster_h_in, ppi_override=ppi_override)
 
     cam, plane_d_mm = ensure_camera_and_guides(cfg)
     apply_light_rig(cfg)
@@ -2085,15 +1606,7 @@ def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] =
             move_object_to_collection(obj, col)
 
         elif kind == "image_plane":
-            obj = ensure_image_plane(
-                obj_cfg,
-                manifest_path,
-                cam,
-                plane_d_mm,
-                poster_w_mm=poster_w_mm,
-                poster_h_mm=poster_h_mm,
-                safe_margin_mm=_safe_margin_mm,
-            )
+            obj = ensure_image_plane(obj_cfg, manifest_path, cam, plane_d_mm)
             move_object_to_collection(obj, col)
 
         elif kind == "backdrop":
@@ -2111,26 +1624,10 @@ def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] =
                 obj_cfg,
                 manifest_path,
                 cam_obj=cam,
-                poster_plane_distance=plane_d_mm,
-                poster_w_mm=poster_w_mm,
-                poster_h_mm=poster_h_mm,
-                safe_margin_mm=_safe_margin_mm,
+                poster_plane_distance_mm=plane_d_mm,
             )
 
         else:
             print(f"[WARN] Unknown kind '{kind}' for object '{obj_cfg.get('name')}'")
-
-    # Optional layout overlap checking + debug boxes
-    try:
-        run_layout_diagnostics(
-            cfg=cfg,
-            cam_obj=cam,
-            poster_plane_distance=plane_d_mm,
-            poster_w_mm=poster_w_mm,
-            poster_h_mm=poster_h_mm,
-            safe_margin_mm=_safe_margin_mm,
-        )
-    except Exception as e:
-        print(f"[layout] Diagnostics error: {e}")
 
     return cfg
