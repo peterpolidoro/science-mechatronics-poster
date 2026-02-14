@@ -1415,7 +1415,21 @@ def build_scene(
 
 
     # Optional center schematic (billboard aligned to the camera plane)
-    center_cfg = schem_cfg.get("center", {}) if isinstance(schem_cfg.get("center", {}), dict) else {}
+    # Center schematic (optional). Preferred location: schematics.center
+    # Legacy compatibility: if schematics.center is missing, also accept components.center (warn).
+    center_cfg: Dict[str, Any] = {}
+    _center_raw = schem_cfg.get("center", None) if isinstance(schem_cfg, dict) else None
+    if isinstance(_center_raw, dict):
+        center_cfg = _center_raw
+    else:
+        _legacy_comp = cfg.get("components", {}) if isinstance(cfg.get("components", {}), dict) else {}
+        _legacy_center = _legacy_comp.get("center", None) if isinstance(_legacy_comp.get("center", None), dict) else None
+        if isinstance(_legacy_center, dict):
+            center_cfg = _legacy_center
+            warn(
+                "Found center image config under components.center; please move it under schematics.center "
+                "(legacy compatibility in use)."
+            )
     if center_cfg:
         merged_c = merged_dict(schem_defaults, center_cfg)
 

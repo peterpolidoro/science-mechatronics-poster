@@ -28,6 +28,17 @@
     "right": {
       "image_path": "assets/images/mouse-joystick-pcb-joystick-motor.png",
       "plane": "YZ"
+    },
+    "center": {
+      "enabled": true,
+      "image_path": "assets/images/MotionAO.png",
+      "z_mm": 380.0,
+      "height_mm": 120.0,
+      "scale": 1.0,
+      "interpolation": "Cubic",
+      "flip_u": false,
+      "flip_v": false,
+      "auto_raise_above_walls": true
     }
   },
   "components": {
@@ -112,17 +123,6 @@
           0.0
         ]
       }
-    },
-    "center": {
-      "enabled": true,
-      "image_path": "assets/images/MotionAO.png",
-      "z_mm": 380.0,
-      "height_mm": 120.0,
-      "scale": 1.0,
-      "interpolation": "Cubic",
-      "flip_u": false,
-      "flip_v": false,
-      "auto_raise_above_walls": true
     }
   },
   "preview_camera": {
