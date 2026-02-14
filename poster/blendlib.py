@@ -443,6 +443,118 @@ def _quat_from_view_dir(
     return q
 
 
+def _parse_target_vector(view_cfg: Any) -> Vector:
+    """Parse a view 'target' / 'look_at' vector from an object's manifest 'view' block.
+
+    Supported keys (aliases):
+      - target_mm, target
+      - look_at_mm, look_at
+      - target_z_mm / look_at_z_mm / target_z / look_at_z (shorthand for [0,0,z])
+
+    If view_cfg is not a dict or no target is provided, returns (0,0,0).
+    """
+    if not isinstance(view_cfg, dict):
+        return Vector((0.0, 0.0, 0.0))
+
+    tgt_val = view_cfg.get(
+        "target_mm",
+        view_cfg.get("target", view_cfg.get("look_at_mm", view_cfg.get("look_at", None))),
+    )
+    if tgt_val is not None:
+        try:
+            v = Vector(tgt_val)
+            return v
+        except Exception:
+            pass
+
+    tz = view_cfg.get(
+        "target_z_mm",
+        view_cfg.get("look_at_z_mm", view_cfg.get("target_z", view_cfg.get("look_at_z", None))),
+    )
+    if tz is not None:
+        try:
+            return Vector((0.0, 0.0, float(tz)))
+        except Exception:
+            return Vector((0.0, 0.0, 0.0))
+
+    return Vector((0.0, 0.0, 0.0))
+
+
+def _parse_view_config(view_cfg: Any) -> Tuple[Optional[Vector], Optional[Vector], float, Optional[float]]:
+    """Parse an object's manifest 'view' block.
+
+    We support two user-facing styles:
+
+      1) Direction style (existing):
+           view: {"dir":[dx,dy,dz], "up":[ux,uy,uz], "roll_deg":0}
+
+         'dir' is the direction from the asset's origin *to the camera* in asset-local coords.
+         The vector's magnitude is ignored for orientation (it is normalized internally).
+
+      2) Virtual camera style (more intuitive):
+           view: {
+             "camera_pos_mm":[x,y,z],          # camera position in asset coords
+             "target_mm":[0,0,0],             # what it looks at in asset coords (default: origin)
+             "up":[0,0,1],                    # camera up reference in asset coords (default: Z+)
+             "roll_deg": 0
+           }
+
+         or equivalently:
+
+           view: {
+             "camera_dir":[dx,dy,dz],          # direction from target -> camera in asset coords
+             "camera_distance_mm": 500,        # optional; if present we can infer placement distance
+             "target_mm":[0,0,0],
+             "up":[0,0,1],
+             "roll_deg": 0
+           }
+
+    Returns:
+      (desired_cam_dir_asset, desired_up_asset, roll_deg, view_distance_mm)
+
+    view_distance_mm is intended as a *default* placement distance (if the object did not
+    specify its own distance_mm). It comes from:
+      - |camera_pos_mm - target_mm| when camera_pos_mm is used, or
+      - camera_distance_mm when camera_dir is used.
+    """
+    if not isinstance(view_cfg, dict):
+        return (None, None, 0.0, None)
+
+    roll_deg = float(view_cfg.get("roll_deg", 0.0))
+
+    # Up vector (optional)
+    up_val = view_cfg.get("up", view_cfg.get("up_mm", view_cfg.get("up_dir", None)))
+    up_vec: Optional[Vector] = Vector(up_val) if up_val is not None else None
+
+    # Look-at target (optional; default origin)
+    tgt_vec = _parse_target_vector(view_cfg)
+
+    # Camera position style
+    cam_pos_val = view_cfg.get(
+        "camera_pos_mm",
+        view_cfg.get("camera_pos", view_cfg.get("cam_pos_mm", view_cfg.get("pos_mm", view_cfg.get("pos", None)))),
+    )
+    if cam_pos_val is not None:
+        cam_pos = Vector(cam_pos_val)
+        v = cam_pos - tgt_vec
+        if v.length <= 1e-9:
+            v = Vector((0.0, 0.0, 1.0))
+            return (v, up_vec, roll_deg, None)
+        return (v, up_vec, roll_deg, float(v.length))
+
+    # Camera direction style (or legacy 'dir')
+    dir_val = view_cfg.get("camera_dir", view_cfg.get("cam_dir", view_cfg.get("dir", view_cfg.get("direction", None))))
+    dir_vec: Optional[Vector] = Vector(dir_val) if dir_val is not None else None
+
+    dist_val = view_cfg.get(
+        "camera_distance_mm",
+        view_cfg.get("camera_distance", view_cfg.get("distance_mm", view_cfg.get("distance", None))),
+    )
+    view_dist: Optional[float] = float(dist_val) if dist_val is not None else None
+
+    return (dir_vec, up_vec, roll_deg, view_dist)
+
+
 # ----------------------------
 # Scene setup
 # ----------------------------
@@ -1707,25 +1819,39 @@ def ensure_imported_blend_asset(
       z_mm + screen_lock (like image planes) place a single point near the poster plane.
 
     View/orientation (optional):
-      view: {dir:[dx,dy,dz], up:[ux,uy,uz], roll_deg:0}
-        - dir is the direction from the asset origin TO the camera in asset-local coords.
-        - up defines the asset's "up" for roll alignment.
-      rotation_deg: extra local rotation applied AFTER view alignment.
+
+      Direction style (existing):
+        view: {dir:[dx,dy,dz], up:[ux,uy,uz], roll_deg:0}
+          - dir is the direction from the asset origin TO the camera in asset-local coords.
+          - up defines the asset's "up" for roll alignment.
+
+      Virtual camera style (more intuitive):
+        view: {camera_pos_mm:[x,y,z], target_mm:[0,0,0], up:[0,0,1], roll_deg:0}
+        or
+        view: {camera_dir:[dx,dy,dz], camera_distance_mm:500, target_mm:[0,0,0], up:[0,0,1], roll_deg:0}
+
+        If obj_cfg.distance_mm is omitted, camera_distance_mm (or |camera_pos_mm-target_mm|) is
+        used as the default placement distance along the poster ray.
+
+      rotation_deg: extra local rotation applied AFTER view alignment (still supported).
     """
     name = obj_cfg["name"]
     parent_col_name = obj_cfg.get("collection", "WORLD")
 
     parent_col = ensure_collection(parent_col_name)
-    helpers_col = ensure_collection("HELPERS")
     asset_col = ensure_child_collection(parent_col, f"ASSET_{name}")
-
-    # Root transform handle (kept in HELPERS)
-    root = ensure_empty(name, [0.0, 0.0, 0.0])
-    root.hide_render = True
-    move_object_to_collection(root, helpers_col)
 
     # Clear previous instancers/objects in the ASSET collection
     remove_collection_objects(asset_col)
+
+    # Root transform handle (kept with the asset so hiding HELPERS doesn't hide the asset)
+    root = ensure_empty(name, [0.0, 0.0, 0.0])
+    # Empties do not render; avoid disabling render (can hide children in some setups).
+    try:
+        root.hide_render = False
+    except Exception:
+        pass
+    move_object_to_collection(root, asset_col)
 
     blend_path = abspath_from_manifest(manifest_path, obj_cfg.get("filepath", obj_cfg.get("path", "")))
     if not os.path.exists(blend_path):
@@ -1840,17 +1966,29 @@ def ensure_imported_blend_asset(
         else:
             base_px, base_py = 0.0, 0.0
 
-        # Position root either by ray distance (preferred) or by z_mm (legacy-style).
+        # Parse view (supports "virtual camera" style) so we can optionally infer distance.
+        view_cfg = obj_cfg.get("view", None)
+        parsed_view_dir, parsed_view_up, parsed_roll_deg, parsed_view_distance = _parse_view_config(view_cfg)
+
+        # The point in asset-local coordinates the virtual camera is looking at.
+        # We treat this as the *anchor point* that gets placed at poster_xy_mm (so if you
+        # set target to [0,0,100], that point — not the asset origin — is what lands on the poster ray).
+        target_asset = _parse_target_vector(view_cfg)
+
+        # Choose placement distance:
+        #   - explicit obj_cfg.distance_mm wins
+        #   - otherwise we fall back to the view camera distance if provided
+        dist_mm = None
         if "distance_mm" in obj_cfg:
             dist_mm = float(obj_cfg.get("distance_mm", float(poster_plane_distance)))
-            place_on_poster_ray(
-                root,
-                cam_obj,
-                float(poster_plane_distance),
-                [base_px, base_py],
-                distance_mm=dist_mm,
-            )
+        elif parsed_view_distance is not None:
+            dist_mm = float(parsed_view_distance)
+
+        # Desired location (in *camera local space*) for the TARGET point on the poster ray/plane.
+        if dist_mm is not None:
+            L_target = poster_ray_dir_cam([base_px, base_py], float(poster_plane_distance)) * float(dist_mm)
         else:
+            # Legacy-style: z_mm offset from poster plane, optionally screen_locked.
             z_mm = float(obj_cfg.get("z_mm", 0.0))
             screen_lock = bool(obj_cfg.get("screen_lock", True))
 
@@ -1861,29 +1999,44 @@ def ensure_imported_blend_asset(
                 if d_actual <= 1e-6:
                     d_actual = 1e-6
                 f = d_actual / d_ref
-            root.location = Vector((base_px * f, base_py * f, -float(poster_plane_distance) + z_mm))
 
-        # Orientation
-        view_cfg = obj_cfg.get("view", None)
-        view_dir = None
-        view_up = None
-        view_roll = 0.0
-        if isinstance(view_cfg, dict):
-            view_dir = view_cfg.get("dir", view_cfg.get("direction", None))
-            view_up = view_cfg.get("up", view_cfg.get("up_dir", None))
-            view_roll = float(view_cfg.get("roll_deg", 0.0))
-        else:
+            L_target = Vector((base_px * f, base_py * f, -float(poster_plane_distance) + z_mm))
+
+        # Store on-poster layout info for optional overlap checking/debug boxes.
+        try:
+            root["poster_layout_xy_mm"] = (float(base_px), float(base_py))
+            if "layout_size_mm" in obj_cfg:
+                ls = obj_cfg.get("layout_size_mm", [0.0, 0.0])
+                if isinstance(ls, (list, tuple)) and len(ls) >= 2:
+                    root["poster_layout_size_mm"] = (float(ls[0]), float(ls[1]))
+        except Exception:
+            pass
+
+        # Orientation (virtual-camera view)
+        view_dir = parsed_view_dir
+        view_up = parsed_view_up
+        view_roll = float(parsed_roll_deg)
+
+        if view_dir is None:
+            # Back-compat: allow top-level keys for view vectors
             view_dir = obj_cfg.get("view_dir", None)
+        if view_up is None:
             view_up = obj_cfg.get("view_up", None)
 
         rot_deg = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
 
+        # We compute a quaternion for anchoring even if we ultimately set Euler rotation.
+        q_final = Euler((0.0, 0.0, 0.0), 'XYZ').to_quaternion()
+
         if view_dir is not None:
             desired_cam_dir_asset = Vector(view_dir)
             desired_up_asset = Vector(view_up) if view_up is not None else Vector((0.0, 0.0, 1.0))
-            actual_cam_dir_parent = (-root.location)
+
+            # Direction from the TARGET point to the camera in camera-local space
+            actual_cam_dir_parent = (-L_target)
             if actual_cam_dir_parent.length <= 1e-9:
                 actual_cam_dir_parent = Vector((0.0, 0.0, 1.0))
+
             q_view = _quat_from_view_dir(
                 desired_cam_dir_asset,
                 desired_up_asset,
@@ -1892,9 +2045,10 @@ def ensure_imported_blend_asset(
                 roll_deg=view_roll,
             )
 
-            # Apply extra rotation in asset local coordinates
+            # Optional extra local rotation (still supported, but try to prefer view.roll_deg)
             q_off = Euler([math.radians(v) for v in rot_deg], 'XYZ').to_quaternion()
             q_final = q_view @ q_off
+
             try:
                 root.rotation_mode = 'QUATERNION'
                 root.rotation_quaternion = q_final
@@ -1906,8 +2060,14 @@ def ensure_imported_blend_asset(
                 root.rotation_mode = 'XYZ'
             except Exception:
                 pass
-            root.rotation_euler = Euler([math.radians(v) for v in rot_deg], 'XYZ')
+            e = Euler([math.radians(v) for v in rot_deg], 'XYZ')
+            root.rotation_euler = e
+            q_final = e.to_quaternion()
 
+        # Anchor translation: place the asset so that TARGET point lands at L_target.
+        # Must account for root scale (local point is scaled then rotated then translated).
+        target_scaled = Vector((target_asset.x * sc2[0], target_asset.y * sc2[1], target_asset.z * sc2[2]))
+        root.location = L_target - (q_final @ target_scaled)
         # Scale
         root.scale = Vector(sc2)
 

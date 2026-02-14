@@ -225,32 +225,14 @@
       "emission_strength": 1.0
     },
     {
-      "name": "figure",
+      "name": "paper-figure",
       "kind": "image_plane",
       "collection": "OVERLAY",
       "space": "POSTER",
-      "image_path": "../assets/images/figure.png",
+      "image_path": "../assets/images/paper-figure.png",
       "size_mm": [
-        240.0,
-        178.9
-      ],
-      "poster_xy_mm": [
-        464.2,
-        -104.35
-      ],
-      "z_mm": 2400.0,
-      "screen_lock": true,
-      "emission_strength": 1.0
-    },
-    {
-      "name": "paper",
-      "kind": "image_plane",
-      "collection": "OVERLAY",
-      "space": "POSTER",
-      "image_path": "../assets/images/paper.png",
-      "size_mm": [
-        280.0,
-        363.6
+        257.6,
+        360.0
       ],
       "poster_xy_mm": [
         444.2,
@@ -265,25 +247,28 @@
       "kind": "import_blend",
       "collection": "WORLD",
       "filepath": "../assets/compiled/blend/joystick.blend",
-      "blend_collection": "SRC_joystick",
+      "blend_collection": "EXPORT_joystick",
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        0.0,
-        -300.0
+        0,
+        -250
       ],
-      "distance_mm": 2000.0,
-      "rotation_deg": [
-        -90,
-        -45,
-        0
-      ],
+      "view": {
+        "camera_dir": [
+          1,
+          -1,
+          1
+        ],
+        "camera_distance_mm": 2000,
+        "target_z_mm": 0,
+        "roll_deg": 0
+      },
       "scale": [
         1,
         1,
         1
-      ],
-      "import_scale": 1.0
+      ]
     },
     {
       "name": "pcb",
@@ -304,9 +289,9 @@
         0.0
       ],
       "scale": [
-        1.0,
-        1.0,
-        1.0
+        1.5,
+        1.5,
+        1.5
       ],
       "import_scale": 1.0
     }
