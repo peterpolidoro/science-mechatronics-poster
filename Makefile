@@ -220,6 +220,12 @@ force-brake-ao-blend:
 	assets/build/active-objects/force-brake-ao-manifest.json \
 	--output assets/compiled/blend/force-brake-ao.blend --debug
 
+.PHONY: animal-feedback-ao-blend
+animal-feedback-ao-blend:
+	$(BLENDER_BG) --python assets/build/active-objects/build.py -- \
+	assets/build/active-objects/animal-feedback-ao-manifest.json \
+	--output assets/compiled/blend/animal-feedback-ao.blend --debug
+
 .PHONY: dump-image-planes
 dump-image-planes:
 	$(BLENDER_BG) -b assets/compiled/blend/motion-ao.blend \

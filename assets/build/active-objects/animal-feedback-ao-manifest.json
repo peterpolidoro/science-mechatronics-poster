@@ -1,0 +1,146 @@
+{
+  "output": {
+    "blend_path": "assets/compiled/blend/animal-feedback-ao.blend",
+    "export_collection": "EXPORT_animal_feedback_ao",
+    "pack_images": false,
+    "compress": true
+  },
+  "units": {
+    "system": "METRIC",
+    "length_unit": "MILLIMETERS",
+    "scale_length": 0.001
+  },
+  "components": {
+    "defaults": {
+      "enabled": true,
+      "link": true,
+      "rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "collection": "COMPONENTS"
+    },
+    "left": {
+      "electrical": {
+        "enabled": true,
+        "blend": "assets/compiled/blend/pcb.blend",
+        "blend_collection": "EXPORT_pcb_audio",
+        "location_mm": [
+          225.0,
+          50.0,
+          0.0
+        ],
+        "scale": 3.0,
+        "rotation_deg": [
+          0.0,
+          0.0,
+          180.0
+        ],
+        "pivot_mode": "OBJECT",
+        "anchor_object": "RIG_PCB_G_AUDIO"
+      },
+      "mechanical": {
+        "enabled": false,
+        "blend": "",
+        "blend_collection": "",
+        "location_mm": [
+          125.0,
+          200.0,
+          -100.0
+        ],
+        "scale": 1.5,
+        "rotation_deg": [
+          0.0,
+          0.0,
+          90.0
+        ]
+      }
+    },
+    "right": {
+      "electrical": {
+        "enabled": false,
+        "blend": "",
+        "blend_collection": "",
+        "location_mm": [
+          75.0,
+          150.0,
+          0.0
+        ],
+        "scale": 3.0,
+        "rotation_deg": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "pivot_mode": "OBJECT",
+        "anchor_object": ""
+      },
+      "mechanical": {
+        "enabled": false,
+        "blend": "",
+        "blend_collection": "",
+        "location_mm": [
+          110.0,
+          400.0,
+          150.0
+        ],
+        "scale": 1.5,
+        "rotation_deg": [
+          135.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  "preview_camera": {
+    "enabled": true,
+    "name": "CAM_ActiveObjectIso",
+    "distance_mm": 1200.0,
+    "direction": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "target_mm": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "lens_mm": 85.0,
+    "sensor_width_mm": 36.0
+  },
+  "images": {
+    "defaults": {
+      "enabled": true,
+      "height_mm": 300.0,
+      "scale": 1.0,
+      "emission_strength": 1.0,
+      "interpolation": "Cubic",
+      "flip_u": false,
+      "flip_v": false,
+      "collection": "SCHEMATICS"
+    },
+    "left": {
+      "image_path": "assets/images/mouse-joystick-pcb-audio.png",
+      "plane": "XZ",
+      "flip_u": true
+    },
+    "right": {
+      "image_path": "",
+      "plane": "YZ"
+    },
+    "center": {
+      "enabled": true,
+      "image_path": "assets/images/AnimalFeedbackAO.png",
+      "z_mm": 380.0,
+      "height_mm": 120.0,
+      "scale": 1.0,
+      "interpolation": "Cubic",
+      "flip_u": false,
+      "flip_v": false,
+      "auto_raise_above_walls": true
+    }
+  }
+}
