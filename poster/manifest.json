@@ -285,11 +285,11 @@
       "space": "POSTER",
       "image_path": "../assets/images/single-trial-sequence.png",
       "size_mm": [
-        450.0,
+        425.0,
         275.0
       ],
       "poster_xy_mm": [
-        -350.0,
+        -380.0,
         -375.0
       ],
       "z_mm": 100.0,
@@ -307,7 +307,7 @@
         125.0
       ],
       "poster_xy_mm": [
-        -100.0,
+        -125.0,
         -350.0
       ],
       "z_mm": 150.0,
