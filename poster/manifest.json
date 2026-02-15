@@ -297,6 +297,24 @@
       "emission_strength": 1.0
     },
     {
+      "name": "firmware",
+      "kind": "image_plane",
+      "collection": "OVERLAY",
+      "space": "POSTER",
+      "image_path": "../assets/images/firmware.png",
+      "size_mm": [
+        187.5,
+        125.0
+      ],
+      "poster_xy_mm": [
+        -100.0,
+        -350.0
+      ],
+      "z_mm": 150.0,
+      "screen_lock": true,
+      "emission_strength": 1.0
+    },
+    {
       "name": "joystick",
       "kind": "import_blend",
       "collection": "WORLD",
@@ -338,8 +356,8 @@
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        425.0,
-        -400.0
+        450.0,
+        -425.0
       ],
       "distance_mm": 2000,
       "appearance_distance_mm": 2000,
@@ -354,9 +372,9 @@
         "roll_deg": 0
       },
       "scale": [
-        1.5,
-        1.5,
-        1.5
+        1.25,
+        1.25,
+        1.25
       ],
       "import_scale": 1.0
     },
