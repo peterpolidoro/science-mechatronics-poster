@@ -226,6 +226,12 @@ animal-feedback-ao-blend:
 	assets/build/active-objects/animal-feedback-ao-manifest.json \
 	--output assets/compiled/blend/animal-feedback-ao.blend --debug
 
+.PHONY: host-link-assay-ao-blend
+host-link-assay-ao-blend:
+	$(BLENDER_BG) --python assets/build/active-objects/build.py -- \
+	assets/build/active-objects/host-link-assay-ao-manifest.json \
+	--output assets/compiled/blend/host-link-assay-ao.blend --debug
+
 .PHONY: dump-image-planes
 dump-image-planes:
 	$(BLENDER_BG) -b assets/compiled/blend/motion-ao.blend \

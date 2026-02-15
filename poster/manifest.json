@@ -452,6 +452,36 @@
       ]
     },
     {
+      "name": "host-link-assay-ao",
+      "kind": "import_blend",
+      "collection": "WORLD",
+      "filepath": "../assets/compiled/blend/host-link-assay-ao.blend",
+      "blend_collection": "EXPORT_host_link_assay_ao",
+      "link": true,
+      "space": "POSTER",
+      "poster_xy_mm": [
+        -440,
+        150
+      ],
+      "distance_mm": 2000,
+      "appearance_distance_mm": 2000,
+      "view": {
+        "camera_dir": [
+          1,
+          1,
+          1
+        ],
+        "camera_distance_mm": 2000,
+        "target_z_mm": 0,
+        "roll_deg": 0
+      },
+      "scale": [
+        0.33,
+        0.33,
+        0.33
+      ]
+    },
+    {
       "name": "peter-polidoro",
       "kind": "text",
       "collection": "OVERLAY",
