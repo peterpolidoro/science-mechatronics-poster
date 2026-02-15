@@ -225,6 +225,24 @@
       "emission_strength": 1.0
     },
     {
+      "name": "programmable-instrument",
+      "kind": "image_plane",
+      "collection": "OVERLAY",
+      "space": "POSTER",
+      "image_path": "../assets/images/programmable-instrument.png",
+      "size_mm": [
+        300.0,
+        200.0
+      ],
+      "poster_xy_mm": [
+        0.0,
+        250.0
+      ],
+      "z_mm": 2400.0,
+      "screen_lock": true,
+      "emission_strength": 1.0
+    },
+    {
       "name": "paper-figure",
       "kind": "image_plane",
       "collection": "OVERLAY",
@@ -251,7 +269,7 @@
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        0,
+        100,
         -250
       ],
       "view": {
@@ -271,6 +289,62 @@
       ]
     },
     {
+      "name": "motion-ao",
+      "kind": "import_blend",
+      "collection": "WORLD",
+      "filepath": "../assets/compiled/blend/motion-ao.blend",
+      "blend_collection": "EXPORT_motion_ao",
+      "link": true,
+      "space": "POSTER",
+      "poster_xy_mm": [
+        -475,
+        -275
+      ],
+      "view": {
+        "camera_dir": [
+          1,
+          1,
+          1
+        ],
+        "camera_distance_mm": 2000,
+        "target_z_mm": 0,
+        "roll_deg": 0
+      },
+      "scale": [
+        0.25,
+        0.25,
+        0.25
+      ]
+    },
+    {
+      "name": "force-brake-ao",
+      "kind": "import_blend",
+      "collection": "WORLD",
+      "filepath": "../assets/compiled/blend/force-brake-ao.blend",
+      "blend_collection": "EXPORT_force_brake_ao",
+      "link": true,
+      "space": "POSTER",
+      "poster_xy_mm": [
+        -240,
+        -275
+      ],
+      "view": {
+        "camera_dir": [
+          1,
+          1,
+          1
+        ],
+        "camera_distance_mm": 2000,
+        "target_z_mm": 0,
+        "roll_deg": 0
+      },
+      "scale": [
+        0.25,
+        0.25,
+        0.25
+      ]
+    },
+    {
       "name": "pcb",
       "kind": "import_blend",
       "collection": "WORLD",
@@ -279,8 +353,8 @@
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        -400.0,
-        -400.0
+        -450.0,
+        -450.0
       ],
       "distance_mm": 2000.0,
       "rotation_deg": [
