@@ -22,12 +22,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import bpy
-from mathutils import Euler, Vector
+from mathutils import Euler, Vector, Matrix
 
 
 # ----------------------------
 # Manifest + path helpers
 # ----------------------------
+
 
 def load_manifest(path: str | Path) -> Dict[str, Any]:
     p = Path(path)
@@ -62,6 +63,7 @@ def abspath_from_manifest(manifest_path: str | Path, maybe_rel: str | Path) -> s
 # Collection + object plumbing
 # ----------------------------
 
+
 def ensure_collection(name: str) -> bpy.types.Collection:
     scene = bpy.context.scene
     col = bpy.data.collections.get(name)
@@ -76,7 +78,9 @@ def ensure_collection(name: str) -> bpy.types.Collection:
     return col
 
 
-def ensure_child_collection(parent: bpy.types.Collection, name: str) -> bpy.types.Collection:
+def ensure_child_collection(
+    parent: bpy.types.Collection, name: str
+) -> bpy.types.Collection:
     col = bpy.data.collections.get(name)
     if col is None:
         col = bpy.data.collections.new(name)
@@ -118,11 +122,13 @@ def remove_startup_objects(names: Sequence[str] = ("Cube", "Camera", "Light")) -
             pass
 
 
-def ensure_empty(name: str, location_mm: Sequence[float] = (0.0, 0.0, 0.0)) -> bpy.types.Object:
+def ensure_empty(
+    name: str, location_mm: Sequence[float] = (0.0, 0.0, 0.0)
+) -> bpy.types.Object:
     obj = bpy.data.objects.get(name)
     if obj is None:
         obj = bpy.data.objects.new(name, None)
-        obj.empty_display_type = 'PLAIN_AXES'
+        obj.empty_display_type = "PLAIN_AXES"
         bpy.context.scene.collection.objects.link(obj)
     obj.location = Vector(location_mm)
     return obj
@@ -144,13 +150,14 @@ def set_world_transform(
     scale_xyz: Sequence[float],
 ) -> None:
     obj.location = Vector(location_mm)
-    obj.rotation_euler = Euler([math.radians(v) for v in rotation_deg], 'XYZ')
+    obj.rotation_euler = Euler([math.radians(v) for v in rotation_deg], "XYZ")
     obj.scale = Vector(scale_xyz)
 
 
 # ----------------------------
 # Mesh + materials
 # ----------------------------
+
 
 def _ensure_plane_uv(mesh: bpy.types.Mesh) -> None:
     """Ensure our generated 1x1 plane has UVs covering [0..1]^2."""
@@ -204,7 +211,10 @@ def ensure_material_principled(
         nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
 
     bsdf.inputs["Base Color"].default_value = (
-        float(color_rgba[0]), float(color_rgba[1]), float(color_rgba[2]), float(color_rgba[3])
+        float(color_rgba[0]),
+        float(color_rgba[1]),
+        float(color_rgba[2]),
+        float(color_rgba[3]),
     )
     bsdf.inputs["Roughness"].default_value = float(roughness)
     if "Specular" in bsdf.inputs:
@@ -214,7 +224,9 @@ def ensure_material_principled(
     return mat
 
 
-def _set_material_transparency(mat: bpy.types.Material, method: str = "BLENDED") -> None:
+def _set_material_transparency(
+    mat: bpy.types.Material, method: str = "BLENDED"
+) -> None:
     """Set transparency behavior (Blender-version tolerant)."""
     m = method.upper()
     if hasattr(mat, "surface_render_method"):
@@ -223,7 +235,9 @@ def _set_material_transparency(mat: bpy.types.Material, method: str = "BLENDED")
         except Exception:
             pass
     elif hasattr(mat, "blend_method"):
-        legacy = {"OPAQUE": "OPAQUE", "BLENDED": "BLEND", "CLIP": "CLIP"}.get(m, "BLEND")
+        legacy = {"OPAQUE": "OPAQUE", "BLENDED": "BLEND", "CLIP": "CLIP"}.get(
+            m, "BLEND"
+        )
         try:
             mat.blend_method = legacy
         except Exception:
@@ -266,7 +280,7 @@ def ensure_material_image_emission(
     img = bpy.data.images.load(image_path, check_existing=True)
     tex.image = img
     try:
-        img.alpha_mode = 'STRAIGHT'
+        img.alpha_mode = "STRAIGHT"
     except Exception:
         pass
 
@@ -302,7 +316,10 @@ def ensure_material_image_emission(
 # Poster math + overlays
 # ----------------------------
 
-def poster_plane_distance_mm(poster_width_mm: float, lens_mm: float, sensor_width_mm: float) -> float:
+
+def poster_plane_distance_mm(
+    poster_width_mm: float, lens_mm: float, sensor_width_mm: float
+) -> float:
     """Distance from camera origin to the poster image plane.
 
     We use a perspective camera with sensor_fit='HORIZONTAL'. In that case, the
@@ -347,17 +364,27 @@ def place_on_poster_plane(
     z_mm: float,
 ) -> None:
     obj.parent = cam_obj
-    obj.matrix_parent_inverse = cam_obj.matrix_world.inverted()
-    obj.location = Vector((float(poster_xy_mm[0]), float(poster_xy_mm[1]), -plane_distance_mm + float(z_mm)))
-    obj.rotation_euler = Euler((0.0, 0.0, 0.0), 'XYZ')
+    obj.matrix_parent_inverse = Matrix.Identity(4)
+    obj.location = Vector(
+        (
+            float(poster_xy_mm[0]),
+            float(poster_xy_mm[1]),
+            -plane_distance_mm + float(z_mm),
+        )
+    )
+    obj.rotation_euler = Euler((0.0, 0.0, 0.0), "XYZ")
 
 
-def poster_ray_dir_cam(poster_xy_mm: Sequence[float], plane_distance_mm: float) -> Vector:
+def poster_ray_dir_cam(
+    poster_xy_mm: Sequence[float], plane_distance_mm: float
+) -> Vector:
     """Ray direction in *camera local space* through a poster-plane point.
 
     poster_xy_mm are in poster mm coordinates (0,0 is center) on the poster image plane.
     """
-    v = Vector((float(poster_xy_mm[0]), float(poster_xy_mm[1]), -float(plane_distance_mm)))
+    v = Vector(
+        (float(poster_xy_mm[0]), float(poster_xy_mm[1]), -float(plane_distance_mm))
+    )
     if v.length <= 1e-9:
         return Vector((0.0, 0.0, -1.0))
     return v.normalized()
@@ -373,7 +400,7 @@ def place_on_poster_ray(
 ) -> None:
     """Parent obj to camera and place it along the view ray at a given camera distance."""
     obj.parent = cam_obj
-    obj.matrix_parent_inverse = cam_obj.matrix_world.inverted()
+    obj.matrix_parent_inverse = Matrix.Identity(4)
     d = float(distance_mm)
     if d < 1e-6:
         d = 1e-6
@@ -418,7 +445,7 @@ def _quat_from_view_dir(
         up_a = Vector((0.0, 0.0, 1.0))
     up_a.normalize()
 
-    up1 = (q @ up_a)
+    up1 = q @ up_a
     if up1.length > 1e-9:
         up1.normalize()
 
@@ -458,7 +485,9 @@ def _parse_target_vector(view_cfg: Any) -> Vector:
 
     tgt_val = view_cfg.get(
         "target_mm",
-        view_cfg.get("target", view_cfg.get("look_at_mm", view_cfg.get("look_at", None))),
+        view_cfg.get(
+            "target", view_cfg.get("look_at_mm", view_cfg.get("look_at", None))
+        ),
     )
     if tgt_val is not None:
         try:
@@ -469,7 +498,9 @@ def _parse_target_vector(view_cfg: Any) -> Vector:
 
     tz = view_cfg.get(
         "target_z_mm",
-        view_cfg.get("look_at_z_mm", view_cfg.get("target_z", view_cfg.get("look_at_z", None))),
+        view_cfg.get(
+            "look_at_z_mm", view_cfg.get("target_z", view_cfg.get("look_at_z", None))
+        ),
     )
     if tz is not None:
         try:
@@ -480,7 +511,9 @@ def _parse_target_vector(view_cfg: Any) -> Vector:
     return Vector((0.0, 0.0, 0.0))
 
 
-def _parse_view_config(view_cfg: Any) -> Tuple[Optional[Vector], Optional[Vector], float, Optional[float]]:
+def _parse_view_config(
+    view_cfg: Any,
+) -> Tuple[Optional[Vector], Optional[Vector], float, Optional[float]]:
     """Parse an object's manifest 'view' block.
 
     We support two user-facing styles:
@@ -532,7 +565,12 @@ def _parse_view_config(view_cfg: Any) -> Tuple[Optional[Vector], Optional[Vector
     # Camera position style
     cam_pos_val = view_cfg.get(
         "camera_pos_mm",
-        view_cfg.get("camera_pos", view_cfg.get("cam_pos_mm", view_cfg.get("pos_mm", view_cfg.get("pos", None)))),
+        view_cfg.get(
+            "camera_pos",
+            view_cfg.get(
+                "cam_pos_mm", view_cfg.get("pos_mm", view_cfg.get("pos", None))
+            ),
+        ),
     )
     if cam_pos_val is not None:
         cam_pos = Vector(cam_pos_val)
@@ -543,28 +581,173 @@ def _parse_view_config(view_cfg: Any) -> Tuple[Optional[Vector], Optional[Vector
         return (v, up_vec, roll_deg, float(v.length))
 
     # Camera direction style (or legacy 'dir')
-    dir_val = view_cfg.get("camera_dir", view_cfg.get("cam_dir", view_cfg.get("dir", view_cfg.get("direction", None))))
+    dir_val = view_cfg.get(
+        "camera_dir",
+        view_cfg.get("cam_dir", view_cfg.get("dir", view_cfg.get("direction", None))),
+    )
     dir_vec: Optional[Vector] = Vector(dir_val) if dir_val is not None else None
 
     dist_val = view_cfg.get(
         "camera_distance_mm",
-        view_cfg.get("camera_distance", view_cfg.get("distance_mm", view_cfg.get("distance", None))),
+        view_cfg.get(
+            "camera_distance",
+            view_cfg.get("distance_mm", view_cfg.get("distance", None)),
+        ),
     )
     view_dist: Optional[float] = float(dist_val) if dist_val is not None else None
 
     return (dir_vec, up_vec, roll_deg, view_dist)
 
 
+def _collection_object_origin(
+    coll: bpy.types.Collection, obj_name: str
+) -> Optional[Vector]:
+    """Origin of a named object inside a loaded/linked collection, in collection-local coords."""
+    try:
+        for o in getattr(coll, "all_objects", []):
+            if o.name == obj_name:
+                return Vector(o.matrix_world.translation)
+    except Exception:
+        pass
+    return None
+
+
+def _collection_mesh_bounds_center(coll: bpy.types.Collection) -> Vector:
+    """Center of the combined mesh bounds of a collection, in collection-local coords."""
+    pts: List[Vector] = []
+    try:
+        for o in getattr(coll, "all_objects", []):
+            if getattr(o, "type", "") != "MESH":
+                continue
+            mw = o.matrix_world
+            for c in getattr(o, "bound_box", []):
+                try:
+                    pts.append(mw @ Vector(c))
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    if not pts:
+        return Vector((0.0, 0.0, 0.0))
+
+    min_v = Vector(
+        (min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts))
+    )
+    max_v = Vector(
+        (max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts))
+    )
+    return (min_v + max_v) * 0.5
+
+
+def _collection_mesh_depth_range_cam(
+    coll: bpy.types.Collection,
+    *,
+    root_loc_cam: Vector,
+    q_asset_to_cam: "mathutils.Quaternion",
+    scale_xyz: Sequence[float],
+) -> Optional[Tuple[float, float]]:
+    """Approximate (min_depth_mm, max_depth_mm) in camera-local coords for an instanced collection.
+
+    Depth is measured as +distance along the camera forward direction (i.e., -Z in camera local space).
+    """
+    sx, sy, sz = float(scale_xyz[0]), float(scale_xyz[1]), float(scale_xyz[2])
+    min_d: Optional[float] = None
+    max_d: Optional[float] = None
+    try:
+        for o in getattr(coll, "all_objects", []):
+            if getattr(o, "type", "") != "MESH":
+                continue
+            mw = o.matrix_world
+            for c in getattr(o, "bound_box", []):
+                p = mw @ Vector(c)
+                p_scaled = Vector((p.x * sx, p.y * sy, p.z * sz))
+                p_cam = root_loc_cam + (q_asset_to_cam @ p_scaled)
+                depth = -float(p_cam.z)
+                if min_d is None or depth < min_d:
+                    min_d = depth
+                if max_d is None or depth > max_d:
+                    max_d = depth
+    except Exception:
+        return None
+
+    if min_d is None or max_d is None:
+        return None
+    return (float(min_d), float(max_d))
+
+
+def _instancer_mesh_depth_range_cam_depsgraph(
+    instancer_obj: bpy.types.Object,
+    cam_obj: bpy.types.Object,
+) -> Optional[Tuple[float, float]]:
+    """Compute (min_depth_mm, max_depth_mm) in camera-local coords for a *collection instance*.
+
+    This uses the evaluated depsgraph's object_instances, so it reflects the *actual* instanced
+    transforms Blender will render (including parenting, constraints, and library-link quirks).
+
+    Depth is measured as +distance along the camera forward direction (i.e., -Z in camera local space).
+    """
+    try:
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        cam_eval = cam_obj.evaluated_get(depsgraph)
+        inv_cam = cam_eval.matrix_world.inverted()
+    except Exception:
+        return None
+
+    min_d: Optional[float] = None
+    max_d: Optional[float] = None
+
+    try:
+        for inst in getattr(depsgraph, "object_instances", []):
+            inst_obj = getattr(inst, "instance_object", None)
+            if inst_obj is None:
+                continue
+
+            # Compare against the original (non-evaluated) instancer object.
+            try:
+                if getattr(inst_obj, "original", inst_obj) != instancer_obj:
+                    continue
+            except Exception:
+                if getattr(inst_obj, "name", "") != getattr(instancer_obj, "name", ""):
+                    continue
+
+            obj = getattr(inst, "object", None)
+            if obj is None or getattr(obj, "type", "") != "MESH":
+                continue
+
+            mw = getattr(inst, "matrix_world", None)
+            if mw is None:
+                continue
+
+            for c in getattr(obj, "bound_box", []):
+                p_world = mw @ Vector(c)
+                p_cam = inv_cam @ p_world
+                depth = -float(p_cam.z)
+                if min_d is None or depth < min_d:
+                    min_d = depth
+                if max_d is None or depth > max_d:
+                    max_d = depth
+    except Exception:
+        return None
+
+    if min_d is None or max_d is None:
+        return None
+    return (float(min_d), float(max_d))
+
+
 # ----------------------------
 # Scene setup
 # ----------------------------
+
 
 def apply_units(cfg: Dict[str, Any]) -> None:
     u = cfg.get("units", {})
     scene = bpy.context.scene
     scene.unit_settings.system = u.get("system", "METRIC")
     scene.unit_settings.length_unit = u.get("length_unit", "MILLIMETERS")
-    scene.unit_settings.scale_length = float(u.get("scale_length", 0.001))  # 1 BU = 1 mm
+    scene.unit_settings.scale_length = float(
+        u.get("scale_length", 0.001)
+    )  # 1 BU = 1 mm
 
 
 def apply_color_management(cfg: Dict[str, Any]) -> None:
@@ -602,7 +785,6 @@ def apply_color_management(cfg: Dict[str, Any]) -> None:
             pass
 
 
-
 def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
     """Select Cycles compute backend and devices (GPU/CPU) from cfg["cycles"].
 
@@ -621,7 +803,7 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
     - If something fails, we gracefully fall back to CPU.
     """
     scene = bpy.context.scene
-    if scene.render.engine != 'CYCLES':
+    if scene.render.engine != "CYCLES":
         return
 
     c = cfg.get("cycles", {})
@@ -629,7 +811,9 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
     compute = str(c.get("compute_device_type", "HIP")).upper()
     use_cpu = bool(c.get("use_cpu", False))
     use_all_gpus = bool(c.get("use_all_gpus", False))
-    preferred_substrings = [str(s).strip() for s in (c.get("preferred_devices", []) or []) if str(s).strip()]
+    preferred_substrings = [
+        str(s).strip() for s in (c.get("preferred_devices", []) or []) if str(s).strip()
+    ]
 
     prefs = None
     try:
@@ -648,10 +832,12 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
     if prefs is None:
         # Can't configure prefs; at least set scene device
         try:
-            scene.cycles.device = 'GPU' if want_device == "GPU" else 'CPU'
+            scene.cycles.device = "GPU" if want_device == "GPU" else "CPU"
         except Exception:
             pass
-        print("[blendlib] WARN: Could not access Cycles preferences; device selection may not work.")
+        print(
+            "[blendlib] WARN: Could not access Cycles preferences; device selection may not work."
+        )
         return
 
     # Set compute backend (HIP for AMD)
@@ -702,8 +888,13 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
 
     # If using only one GPU and no preferred list was given, pick a "best" device.
     best_gpu = None
-    if want_device == "GPU" and (not preferred_substrings) and (not use_all_gpus) and gpu_candidates:
-        best_score = -10**9
+    if (
+        want_device == "GPU"
+        and (not preferred_substrings)
+        and (not use_all_gpus)
+        and gpu_candidates
+    ):
+        best_score = -(10**9)
         for d in gpu_candidates:
             name = str(getattr(d, "name", ""))
             up = name.upper()
@@ -754,21 +945,25 @@ def configure_cycles_devices(cfg: Dict[str, Any]) -> None:
     # Tell Cycles to use GPU if we enabled at least one GPU, else CPU.
     try:
         if want_device == "GPU" and enabled_gpus:
-            scene.cycles.device = 'GPU'
+            scene.cycles.device = "GPU"
         else:
-            scene.cycles.device = 'CPU'
+            scene.cycles.device = "CPU"
     except Exception:
         pass
 
     try:
         cd = getattr(prefs, "compute_device_type", None)
-        print(f"[blendlib] Cycles compute_device_type={cd} scene.cycles.device={getattr(scene.cycles,'device',None)}")
+        print(
+            f"[blendlib] Cycles compute_device_type={cd} scene.cycles.device={getattr(scene.cycles,'device',None)}"
+        )
     except Exception:
         pass
     if enabled_gpus:
         print(f"[blendlib] Enabled GPU devices: {enabled_gpus}")
     else:
-        print("[blendlib] WARN: No GPU devices enabled for Cycles; falling back to CPU.")
+        print(
+            "[blendlib] WARN: No GPU devices enabled for Cycles; falling back to CPU."
+        )
     if enabled_cpu:
         print("[blendlib] Enabled CPU device as well.")
 
@@ -855,7 +1050,9 @@ def apply_render_settings(
     scene = bpy.context.scene
     r = cfg.get("render", {})
 
-    engine_pref = r.get("engine_preference", ["CYCLES", "BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"])
+    engine_pref = r.get(
+        "engine_preference", ["CYCLES", "BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"]
+    )
     for eng in engine_pref:
         try:
             scene.render.engine = eng
@@ -870,7 +1067,11 @@ def apply_render_settings(
     scene.render.image_settings.color_mode = r.get("color_mode", "RGBA")
     scene.render.image_settings.color_depth = str(r.get("color_depth", "16"))
 
-    ppi = float(ppi_override) if ppi_override is not None else float(cfg.get("poster", {}).get("ppi", 150))
+    ppi = (
+        float(ppi_override)
+        if ppi_override is not None
+        else float(cfg.get("poster", {}).get("ppi", 150))
+    )
     res_x = int(round(float(poster_width_in) * ppi))
     res_y = int(round(float(poster_height_in) * ppi))
     scene.render.resolution_x = max(1, res_x)
@@ -878,7 +1079,7 @@ def apply_render_settings(
     scene.render.resolution_percentage = 100
 
     # If we are in Cycles, apply cycles settings
-    if scene.render.engine == 'CYCLES':
+    if scene.render.engine == "CYCLES":
         configure_cycles_devices(cfg)
         apply_cycles_settings(cfg)
 
@@ -908,7 +1109,12 @@ def apply_world_settings(cfg: Dict[str, Any]) -> None:
 
     col = wcfg.get("background_color_rgba", [1.0, 1.0, 1.0, 1.0])
     strength = float(wcfg.get("strength", 1.0))
-    bg.inputs["Color"].default_value = (float(col[0]), float(col[1]), float(col[2]), float(col[3]))
+    bg.inputs["Color"].default_value = (
+        float(col[0]),
+        float(col[1]),
+        float(col[2]),
+        float(col[3]),
+    )
     bg.inputs["Strength"].default_value = strength
 
     links.new(bg.outputs["Background"], out.inputs["Surface"])
@@ -922,9 +1128,9 @@ def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, flo
     poster_w_mm, poster_h_mm, safe_margin_mm = poster_dimensions_mm(cfg)
 
     cam = ensure_camera(cam_cfg.get("name", "CAM_Poster"))
-    cam.data.type = 'PERSP'
+    cam.data.type = "PERSP"
     cam.data.lens = float(cam_cfg.get("lens_mm", 85.0))
-    cam.data.sensor_fit = 'HORIZONTAL'
+    cam.data.sensor_fit = "HORIZONTAL"
     cam.data.sensor_width = float(cam_cfg.get("sensor_width_mm", 36.0))
 
     cam.location = Vector(cam_cfg.get("location_mm", [0.0, -1750.0, 750.0]))
@@ -936,14 +1142,14 @@ def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, flo
     # Track-to constraint
     track = None
     for c in cam.constraints:
-        if c.type == 'TRACK_TO':
+        if c.type == "TRACK_TO":
             track = c
             break
     if track is None:
-        track = cam.constraints.new(type='TRACK_TO')
+        track = cam.constraints.new(type="TRACK_TO")
     track.target = target
-    track.track_axis = 'TRACK_NEGATIVE_Z'
-    track.up_axis = 'UP_Y'
+    track.track_axis = "TRACK_NEGATIVE_Z"
+    track.up_axis = "UP_Y"
 
     scene.camera = cam
 
@@ -957,13 +1163,13 @@ def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, flo
         mesh = ensure_plane_mesh("REF_PosterImagePlane_MESH")
         plane = bpy.data.objects.new("REF_PosterImagePlane", mesh)
         scene.collection.objects.link(plane)
-    plane.display_type = 'WIRE'
+    plane.display_type = "WIRE"
     plane.hide_render = True
     move_object_to_collection(plane, helpers)
     plane.parent = cam
-    plane.matrix_parent_inverse = cam.matrix_world.inverted()
+    plane.matrix_parent_inverse = Matrix.Identity(4)
     plane.location = Vector((0.0, 0.0, -d_mm))
-    plane.rotation_euler = Euler((0.0, 0.0, 0.0), 'XYZ')
+    plane.rotation_euler = Euler((0.0, 0.0, 0.0), "XYZ")
     plane.scale = Vector((poster_w_mm, poster_h_mm, 1.0))
 
     # Safe area guide
@@ -972,13 +1178,13 @@ def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, flo
         mesh = ensure_plane_mesh("REF_SafeArea_MESH")
         safe = bpy.data.objects.new("REF_SafeArea", mesh)
         scene.collection.objects.link(safe)
-    safe.display_type = 'WIRE'
+    safe.display_type = "WIRE"
     safe.hide_render = True
     move_object_to_collection(safe, helpers)
     safe.parent = cam
-    safe.matrix_parent_inverse = cam.matrix_world.inverted()
+    safe.matrix_parent_inverse = Matrix.Identity(4)
     safe.location = Vector((0.0, 0.0, -d_mm + 0.5))
-    safe.rotation_euler = Euler((0.0, 0.0, 0.0), 'XYZ')
+    safe.rotation_euler = Euler((0.0, 0.0, 0.0), "XYZ")
     safe_w = max(1.0, poster_w_mm - 2.0 * safe_margin_mm)
     safe_h = max(1.0, poster_h_mm - 2.0 * safe_margin_mm)
     safe.scale = Vector((safe_w, safe_h, 1.0))
@@ -990,12 +1196,13 @@ def ensure_camera_and_guides(cfg: Dict[str, Any]) -> Tuple[bpy.types.Object, flo
 # Lighting
 # ----------------------------
 
+
 def _ensure_track_to(
     obj: bpy.types.Object,
     target: bpy.types.Object,
     *,
-    track_axis: str = 'TRACK_NEGATIVE_Z',
-    up_axis: str = 'UP_Y',
+    track_axis: str = "TRACK_NEGATIVE_Z",
+    up_axis: str = "UP_Y",
 ) -> None:
     """Ensure a Track To constraint exists on obj pointing at target.
 
@@ -1009,26 +1216,28 @@ def _ensure_track_to(
     """
     c = None
     for cc in obj.constraints:
-        if cc.type == 'TRACK_TO':
+        if cc.type == "TRACK_TO":
             c = cc
             break
     if c is None:
-        c = obj.constraints.new(type='TRACK_TO')
+        c = obj.constraints.new(type="TRACK_TO")
     c.target = target
     try:
         c.track_axis = str(track_axis)
     except Exception:
-        c.track_axis = 'TRACK_NEGATIVE_Z'
+        c.track_axis = "TRACK_NEGATIVE_Z"
     try:
         c.up_axis = str(up_axis)
     except Exception:
-        c.up_axis = 'UP_Y'
+        c.up_axis = "UP_Y"
 
 
-def _ensure_area_light(name: str, cfg: Dict[str, Any], lights_col: bpy.types.Collection) -> bpy.types.Object:
+def _ensure_area_light(
+    name: str, cfg: Dict[str, Any], lights_col: bpy.types.Collection
+) -> bpy.types.Object:
     obj = bpy.data.objects.get(name)
     if obj is None:
-        light_data = bpy.data.lights.new(name + "_DATA", type='AREA')
+        light_data = bpy.data.lights.new(name + "_DATA", type="AREA")
         obj = bpy.data.objects.new(name, light_data)
         bpy.context.scene.collection.objects.link(obj)
 
@@ -1038,11 +1247,17 @@ def _ensure_area_light(name: str, cfg: Dict[str, Any], lights_col: bpy.types.Col
         obj.location = Vector(cfg["location_mm"])
 
     if "rotation_deg" in cfg:
-        obj.rotation_euler = Euler([math.radians(v) for v in cfg["rotation_deg"]], 'XYZ')
+        obj.rotation_euler = Euler(
+            [math.radians(v) for v in cfg["rotation_deg"]], "XYZ"
+        )
 
     if "color_rgb" in cfg:
         try:
-            obj.data.color = (float(cfg["color_rgb"][0]), float(cfg["color_rgb"][1]), float(cfg["color_rgb"][2]))
+            obj.data.color = (
+                float(cfg["color_rgb"][0]),
+                float(cfg["color_rgb"][1]),
+                float(cfg["color_rgb"][2]),
+            )
         except Exception:
             pass
 
@@ -1050,10 +1265,14 @@ def _ensure_area_light(name: str, cfg: Dict[str, Any], lights_col: bpy.types.Col
     if energy is not None:
         obj.data.energy = float(energy)
 
-    if "size_xy_mm" in cfg and isinstance(cfg["size_xy_mm"], (list, tuple)) and len(cfg["size_xy_mm"]) == 2:
+    if (
+        "size_xy_mm" in cfg
+        and isinstance(cfg["size_xy_mm"], (list, tuple))
+        and len(cfg["size_xy_mm"]) == 2
+    ):
         sx, sy = float(cfg["size_xy_mm"][0]), float(cfg["size_xy_mm"][1])
         try:
-            obj.data.shape = 'RECTANGLE'
+            obj.data.shape = "RECTANGLE"
             obj.data.size = sx
             obj.data.size_y = sy
         except Exception:
@@ -1079,11 +1298,11 @@ def apply_light_rig(cfg: Dict[str, Any]) -> None:
     rig = lights_cfg.get("rig", "three_area")
     if rig == "three_area":
         if lights_cfg.get("key", {}).get("enabled", True):
-            _ensure_area_light("LIGHT_Key",  lights_cfg.get("key", {}),  lights_col)
+            _ensure_area_light("LIGHT_Key", lights_cfg.get("key", {}), lights_col)
         if lights_cfg.get("fill", {}).get("enabled", True):
             _ensure_area_light("LIGHT_Fill", lights_cfg.get("fill", {}), lights_col)
         if lights_cfg.get("rim", {}).get("enabled", True):
-            _ensure_area_light("LIGHT_Rim",  lights_cfg.get("rim", {}),  lights_col)
+            _ensure_area_light("LIGHT_Rim", lights_cfg.get("rim", {}), lights_col)
 
     extras = lights_cfg.get("extras", [])
     if isinstance(extras, list):
@@ -1101,6 +1320,7 @@ def apply_light_rig(cfg: Dict[str, Any]) -> None:
 # ----------------------------
 # Studio backdrop (cyclorama)
 # ----------------------------
+
 
 def _make_cyclorama_mesh(
     mesh_name: str,
@@ -1135,9 +1355,9 @@ def _make_cyclorama_mesh(
     half_w = float(width_mm) * 0.5
 
     verts: List[Tuple[float, float, float]] = []
-    for (y, z) in pts:
+    for y, z in pts:
         verts.append((-half_w, y, z))
-        verts.append(( half_w, y, z))
+        verts.append((half_w, y, z))
 
     faces: List[Tuple[int, int, int, int]] = []
     for j in range(len(pts) - 1):
@@ -1183,7 +1403,9 @@ def ensure_backdrop(obj_cfg: Dict[str, Any]) -> bpy.types.Object:
     color = mat_cfg.get("color_rgba", [1.0, 1.0, 1.0, 1.0])
     rough = float(mat_cfg.get("roughness", 0.95))
     spec = float(mat_cfg.get("specular", 0.0))
-    mat = ensure_material_principled(f"MAT_{name}", color_rgba=color, roughness=rough, specular=spec)
+    mat = ensure_material_principled(
+        f"MAT_{name}", color_rgba=color, roughness=rough, specular=spec
+    )
     if obj.data.materials:
         obj.data.materials[0] = mat
     else:
@@ -1202,6 +1424,7 @@ def ensure_backdrop(obj_cfg: Dict[str, Any]) -> bpy.types.Object:
 # ----------------------------
 # Overlay objects
 # ----------------------------
+
 
 def _as_xy(v: Any, *, default: Tuple[float, float] = (0.0, 0.0)) -> Tuple[float, float]:
     if isinstance(v, (list, tuple)) and len(v) >= 2:
@@ -1276,6 +1499,7 @@ def _poster_xy_from_anchor(
 
     return x + ox, y + oy
 
+
 def ensure_image_plane(
     obj_cfg: Dict[str, Any],
     manifest_path: str | Path,
@@ -1336,7 +1560,9 @@ def ensure_image_plane(
     except Exception:
         img = None
     strength = float(obj_cfg.get("emission_strength", 1.0))
-    mat = ensure_material_image_emission("MAT_" + name, img_path, emission_strength=strength)
+    mat = ensure_material_image_emission(
+        "MAT_" + name, img_path, emission_strength=strength
+    )
     if obj.data.materials:
         obj.data.materials[0] = mat
     else:
@@ -1367,11 +1593,17 @@ def ensure_image_plane(
         w0, h0 = obj_cfg.get("size_mm", [100.0, 100.0])
         w_mm, h_mm = float(w0), float(h0)
     else:
-        margin_xy = _as_xy(obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm))
+        margin_xy = _as_xy(
+            obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm)
+        )
         mx, my = float(margin_xy[0]), float(margin_xy[1])
 
-        fit_w = bool(obj_cfg.get("fit_width", False)) or (str(obj_cfg.get("fit", "")).upper() == "WIDTH")
-        fit_h = bool(obj_cfg.get("fit_height", False)) or (str(obj_cfg.get("fit", "")).upper() == "HEIGHT")
+        fit_w = bool(obj_cfg.get("fit_width", False)) or (
+            str(obj_cfg.get("fit", "")).upper() == "WIDTH"
+        )
+        fit_h = bool(obj_cfg.get("fit_height", False)) or (
+            str(obj_cfg.get("fit", "")).upper() == "HEIGHT"
+        )
         keep_aspect = bool(obj_cfg.get("maintain_aspect", True))
 
         # Prefer fit_width if both are set.
@@ -1427,7 +1659,9 @@ def ensure_image_plane(
             base_py = float(poster_xy[1])
         elif "anchor" in obj_cfg:
             # If the user is anchoring and didn't specify margin_mm, default to safe margin.
-            margin_xy = _as_xy(obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm))
+            margin_xy = _as_xy(
+                obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm)
+            )
             offset_xy = _as_xy(obj_cfg.get("offset_mm", None), default=(0.0, 0.0))
             base_px, base_py = _poster_xy_from_anchor(
                 anchor=obj_cfg.get("anchor"),
@@ -1485,7 +1719,7 @@ def ensure_image_plane(
             # Determinism: if the user removes aim_* keys, remove existing Track To constraints.
             try:
                 for c in list(obj.constraints):
-                    if c.type == 'TRACK_TO':
+                    if c.type == "TRACK_TO":
                         obj.constraints.remove(c)
             except Exception:
                 pass
@@ -1498,7 +1732,7 @@ def ensure_image_plane(
             pass
         try:
             for c in list(obj.constraints):
-                if c.type == 'TRACK_TO':
+                if c.type == "TRACK_TO":
                     obj.constraints.remove(c)
         except Exception:
             pass
@@ -1526,13 +1760,16 @@ def ensure_image_plane(
 # Asset import (GLB / WRL)
 # ----------------------------
 
+
 def _import_objects_and_get_new(import_op) -> List[bpy.types.Object]:
     before = {o.as_pointer() for o in bpy.data.objects}
     import_op()
     return [o for o in bpy.data.objects if o.as_pointer() not in before]
 
 
-def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, importer: str) -> bpy.types.Object:
+def ensure_imported_asset(
+    obj_cfg: Dict[str, Any], manifest_path: str | Path, importer: str
+) -> bpy.types.Object:
     """Import a GLB/WRL and wrap it under a stable Empty root named obj_cfg['name'].
 
     Visible geometry lives in ASSET_<name> (child collection under obj_cfg['collection']).
@@ -1548,7 +1785,7 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, im
     root = bpy.data.objects.get(name)
     if root is None:
         root = bpy.data.objects.new(name, None)
-        root.empty_display_type = 'PLAIN_AXES'
+        root.empty_display_type = "PLAIN_AXES"
         bpy.context.scene.collection.objects.link(root)
     root.hide_render = True
     move_object_to_collection(root, helpers_col)
@@ -1561,7 +1798,7 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, im
     # Identity root during parenting
     root.parent = None
     root.location = Vector((0.0, 0.0, 0.0))
-    root.rotation_euler = Euler((0.0, 0.0, 0.0), 'XYZ')
+    root.rotation_euler = Euler((0.0, 0.0, 0.0), "XYZ")
     root.scale = Vector((1.0, 1.0, 1.0))
 
     # Clear prior import
@@ -1572,11 +1809,15 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, im
         raise FileNotFoundError(f"Asset file not found: {filepath}")
 
     if importer == "glb":
+
         def op():
             bpy.ops.import_scene.gltf(filepath=filepath)
+
     elif importer == "wrl":
+
         def op():
             bpy.ops.import_scene.x3d(filepath=filepath)
+
     else:
         raise ValueError(f"Unknown importer: {importer}")
 
@@ -1610,15 +1851,15 @@ def ensure_imported_asset(obj_cfg: Dict[str, Any], manifest_path: str | Path, im
         o.matrix_world = mw
 
     # Apply final transform to root (include import_scale)
-    combined_scale = (Vector(desired_scale) * import_scale)
+    combined_scale = Vector(desired_scale) * import_scale
     set_world_transform(root, desired_loc, desired_rot, combined_scale)
     return root
-
 
 
 # ----------------------------
 # 3D Text (optional)
 # ----------------------------
+
 
 def ensure_text_object(
     obj_cfg: Dict[str, Any],
@@ -1632,7 +1873,7 @@ def ensure_text_object(
 
     curve = bpy.data.curves.get(name + "_FONT")
     if curve is None:
-        curve = bpy.data.curves.new(name + "_FONT", type='FONT')
+        curve = bpy.data.curves.new(name + "_FONT", type="FONT")
 
     obj = bpy.data.objects.get(name)
     if obj is None:
@@ -1673,7 +1914,13 @@ def ensure_text_object(
         rough = float(obj_cfg.get("roughness", style.get("roughness", 0.5)))
         spec = float(obj_cfg.get("specular", style.get("specular", 0.2)))
         metal = float(obj_cfg.get("metallic", style.get("metallic", 0.0)))
-        mat = ensure_material_principled("MAT_" + (style_name or name), color_rgba=rgba, roughness=rough, specular=spec, metallic=metal)
+        mat = ensure_material_principled(
+            "MAT_" + (style_name or name),
+            color_rgba=rgba,
+            roughness=rough,
+            specular=spec,
+            metallic=metal,
+        )
         if obj.data.materials:
             obj.data.materials[0] = mat
         else:
@@ -1723,13 +1970,16 @@ def ensure_text_object(
 # Asset import (.blend library collections)
 # ----------------------------
 
+
 def _list_collections_in_blend(blend_path: str, *, link: bool = True) -> List[str]:
     blend_path = str(Path(blend_path).resolve())
     with bpy.data.libraries.load(blend_path, link=link) as (data_from, data_to):
         return list(getattr(data_from, "collections", []))
 
 
-def _load_collection_from_blend(blend_path: str, collection_name: str, *, link: bool) -> Optional[bpy.types.Collection]:
+def _load_collection_from_blend(
+    blend_path: str, collection_name: str, *, link: bool
+) -> Optional[bpy.types.Collection]:
     blend_path = str(Path(blend_path).resolve())
     with bpy.data.libraries.load(blend_path, link=link) as (data_from, data_to):
         if collection_name not in getattr(data_from, "collections", []):
@@ -1791,7 +2041,9 @@ def load_collection_from_blend(
     if picked is None:
         raise RuntimeError(f"Failed to load any collection from {blend_path}")
 
-    print(f"[blendlib] Loaded collection '{picked.name}' (picked='{picked_name}', requested='{collection_name}') from: {blend_path}")
+    print(
+        f"[blendlib] Loaded collection '{picked.name}' (picked='{picked_name}', requested='{collection_name}') from: {blend_path}"
+    )
     return picked
 
 
@@ -1814,6 +2066,11 @@ def ensure_imported_blend_asset(
     POSTER placement fields (recommended):
       poster_xy_mm: [x,y] on the poster (mm, origin at center)
       distance_mm: camera distance along the ray through (x,y) on the poster plane
+
+      appearance_distance_mm (optional): if provided, the asset is uniformly scaled by
+          (distance_mm / appearance_distance_mm) so its apparent size stays the same as if it
+          were placed at appearance_distance_mm. This is useful for depth layering (front/back)
+          without changing the rendered size.
 
     Alternative POSTER placement (legacy-style):
       z_mm + screen_lock (like image planes) place a single point near the poster plane.
@@ -1853,7 +2110,9 @@ def ensure_imported_blend_asset(
         pass
     move_object_to_collection(root, asset_col)
 
-    blend_path = abspath_from_manifest(manifest_path, obj_cfg.get("filepath", obj_cfg.get("path", "")))
+    blend_path = abspath_from_manifest(
+        manifest_path, obj_cfg.get("filepath", obj_cfg.get("path", ""))
+    )
     if not os.path.exists(blend_path):
         raise FileNotFoundError(f"Blend asset file not found: {blend_path}")
     requested = obj_cfg.get("blend_collection", None)
@@ -1862,15 +2121,25 @@ def ensure_imported_blend_asset(
     requested_name: Optional[str] = str(requested) if requested is not None else None
     collection_for_instance: Optional[str] = requested_name
 
-    # Many of our CAD-derived libraries expose a stable "public API" wrapper collection
-    # named EXPORT_*. These wrapper collections often contain *no objects directly*,
-    # only child collections (typically one SRC_* for meshes and one RIG_* for controls).
+    requested_name: Optional[str] = str(requested) if requested is not None else None
+    collection_for_instance: Optional[str] = requested_name
+
+    # Collection selection policy:
     #
-    # In that common case, instancing the SRC_* child is the most reliable way to
-    # actually render the geometry.
-    if requested_name and requested_name.startswith("EXPORT_") and not bool(obj_cfg.get("instance_export_wrapper", False)):
-        suffix = requested_name[len("EXPORT_"):]
-        collection_for_instance = f"SRC_{suffix}"
+    # - By default, we instance exactly what the manifest requested (e.g. EXPORT_* if specified).
+    # - If you set prefer_src: true (and don't force instance_export_wrapper), then requesting
+    #   EXPORT_foo will instance SRC_foo instead (sometimes useful for "just the meshes").
+    # - If you request an EXPORT_* wrapper but it contains no meshes, we fall back to SRC_* automatically
+    #   (unless you set instance_export_wrapper: true).
+    prefer_src = bool(obj_cfg.get("prefer_src", False))
+    force_export = bool(obj_cfg.get("instance_export_wrapper", False))
+
+    src_fallback_name: Optional[str] = None
+    if requested_name and requested_name.startswith("EXPORT_"):
+        suffix = requested_name[len("EXPORT_") :]
+        src_fallback_name = f"SRC_{suffix}"
+        if prefer_src and (not force_export):
+            collection_for_instance = src_fallback_name
 
     # Fallback order: try a "SRC_<asset>" first (geometry), then EXPORT_<asset>, then
     # a same-named collection, then the generic default "Collection".
@@ -1879,7 +2148,7 @@ def ensure_imported_blend_asset(
     # If the user explicitly requested an EXPORT_* wrapper, keep it (and its RIG_* peer)
     # in the fallbacks, in case SRC_* doesn't exist in that library for some reason.
     if requested_name and requested_name.startswith("EXPORT_"):
-        suffix = requested_name[len("EXPORT_"):]
+        suffix = requested_name[len("EXPORT_") :]
         fallback = [requested_name, f"RIG_{suffix}"] + fallback
 
     coll = load_collection_from_blend(
@@ -1889,8 +2158,43 @@ def ensure_imported_blend_asset(
         link=link,
     )
 
-    if requested_name and requested_name.startswith("EXPORT_") and collection_for_instance != requested_name:
-        print(f"[blendlib] Note: '{requested_name}' is an EXPORT_* wrapper; instancing '{coll.name}' instead.")
+    # Log when the user asked for an EXPORT_* view but we intentionally instance SRC_* instead.
+    if (
+        requested_name
+        and requested_name.startswith("EXPORT_")
+        and collection_for_instance != requested_name
+    ):
+        print(
+            f"[blendlib] Note: prefer_src enabled; requested '{requested_name}', instancing '{coll.name}' instead."
+        )
+
+    # If the manifest requested an EXPORT_* wrapper but it contains no meshes, fall back to SRC_* automatically
+    # (unless the user forced the wrapper via instance_export_wrapper: true).
+    if (
+        requested_name
+        and requested_name.startswith("EXPORT_")
+        and (collection_for_instance == requested_name)
+        and (not force_export)
+        and src_fallback_name
+    ):
+        try:
+            _all_tmp = getattr(coll, "all_objects", [])
+            _mesh_tmp = sum(1 for o in _all_tmp if getattr(o, "type", "") == "MESH")
+        except Exception:
+            _mesh_tmp = 0
+
+        if _mesh_tmp == 0:
+            try:
+                alt = _load_collection_from_blend(
+                    blend_path, src_fallback_name, link=link
+                )
+            except Exception:
+                alt = None
+            if alt is not None:
+                print(
+                    f"[blendlib] Note: '{requested_name}' contains no meshes; instancing '{alt.name}' instead."
+                )
+                coll = alt
 
     # Helpful diagnostics when debugging missing imports:
     # - direct: objects directly in the chosen collection (EXPORT_* usually has 0)
@@ -1903,7 +2207,9 @@ def ensure_imported_blend_asset(
         n_mesh = sum(1 for o in _all if getattr(o, "type", "") == "MESH")
         n_child = len(getattr(coll, "children", []))
         n_direct = len(getattr(coll, "objects", []))
-        print(f"[blendlib] Collection stats for '{coll.name}': direct={n_direct} children={n_child} all={n_all} mesh={n_mesh}")
+        print(
+            f"[blendlib] Collection stats for '{coll.name}': direct={n_direct} children={n_child} all={n_all} mesh={n_mesh}"
+        )
     except Exception:
         pass
 
@@ -1919,8 +2225,8 @@ def ensure_imported_blend_asset(
     bpy.context.scene.collection.objects.link(inst)
     move_object_to_collection(inst, asset_col)
 
-    inst.empty_display_type = 'PLAIN_AXES'
-    inst.instance_type = 'COLLECTION'
+    inst.empty_display_type = "PLAIN_AXES"
+    inst.instance_type = "COLLECTION"
     inst.instance_collection = coll
 
     inst.parent = root
@@ -1931,29 +2237,41 @@ def ensure_imported_blend_asset(
 
     sc = obj_cfg.get("scale", [1.0, 1.0, 1.0])
     import_scale = float(obj_cfg.get("import_scale", 1.0))
-    sc2 = [float(sc[0]) * import_scale, float(sc[1]) * import_scale, float(sc[2]) * import_scale]
+    sc2 = [
+        float(sc[0]) * import_scale,
+        float(sc[1]) * import_scale,
+        float(sc[2]) * import_scale,
+    ]
 
     space = str(obj_cfg.get("space", "WORLD")).upper()
     if space == "POSTER":
         if cam_obj is None or poster_plane_distance is None:
-            raise ValueError("import_blend with space='POSTER' requires cam_obj and poster_plane_distance")
+            raise ValueError(
+                "import_blend with space='POSTER' requires cam_obj and poster_plane_distance"
+            )
 
         # Parent the root to the poster camera so poster coordinates remain stable.
         root.parent = cam_obj
-        root.matrix_parent_inverse = cam_obj.matrix_world.inverted()
+        root.matrix_parent_inverse = Matrix.Identity(4)
 
         # Placement target on poster
         if "poster_xy_mm" in obj_cfg:
             poster_xy = obj_cfg.get("poster_xy_mm", [0.0, 0.0])
             base_px, base_py = float(poster_xy[0]), float(poster_xy[1])
-        elif "anchor" in obj_cfg and (poster_w_mm is not None) and (poster_h_mm is not None):
+        elif (
+            "anchor" in obj_cfg
+            and (poster_w_mm is not None)
+            and (poster_h_mm is not None)
+        ):
             # Anchor requires a notion of object size; use layout_size_mm if provided.
             layout_sz = obj_cfg.get("layout_size_mm", None)
             if isinstance(layout_sz, (list, tuple)) and len(layout_sz) >= 2:
                 w_l, h_l = float(layout_sz[0]), float(layout_sz[1])
             else:
                 w_l, h_l = 0.0, 0.0
-            margin_xy = _as_xy(obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm))
+            margin_xy = _as_xy(
+                obj_cfg.get("margin_mm", None), default=(safe_margin_mm, safe_margin_mm)
+            )
             offset_xy = _as_xy(obj_cfg.get("offset_mm", None), default=(0.0, 0.0))
             base_px, base_py = _poster_xy_from_anchor(
                 anchor=obj_cfg.get("anchor"),
@@ -1968,12 +2286,35 @@ def ensure_imported_blend_asset(
 
         # Parse view (supports "virtual camera" style) so we can optionally infer distance.
         view_cfg = obj_cfg.get("view", None)
-        parsed_view_dir, parsed_view_up, parsed_roll_deg, parsed_view_distance = _parse_view_config(view_cfg)
+        parsed_view_dir, parsed_view_up, parsed_roll_deg, parsed_view_distance = (
+            _parse_view_config(view_cfg)
+        )
 
         # The point in asset-local coordinates the virtual camera is looking at.
         # We treat this as the *anchor point* that gets placed at poster_xy_mm (so if you
         # set target to [0,0,100], that point — not the asset origin — is what lands on the poster ray).
         target_asset = _parse_target_vector(view_cfg)
+
+        # Optional auto-target selection for assets whose geometry is not centered at (0,0,0).
+        # This affects BOTH:
+        #   - where the asset is anchored on the poster (poster_xy_mm), and
+        #   - the direction used for view alignment (the target is the point the virtual camera looks at).
+        #
+        # Usage:
+        #   view: { "target_mode": "BOUNDS_CENTER", ... }
+        #   view: { "target_object_name": "RIG_SOMETHING_ROOT", ... }
+        if isinstance(view_cfg, dict):
+            mode = str(view_cfg.get("target_mode", "")).upper()
+            if mode in ("BOUNDS_CENTER", "MESH_BOUNDS_CENTER", "MESH_CENTER"):
+                target_asset = _collection_mesh_bounds_center(coll)
+            else:
+                tname = view_cfg.get(
+                    "target_object_name", view_cfg.get("target_object", None)
+                )
+                if tname:
+                    vv = _collection_object_origin(coll, str(tname))
+                    if vv is not None:
+                        target_asset = vv
 
         # Choose placement distance:
         #   - explicit obj_cfg.distance_mm wins
@@ -1984,9 +2325,30 @@ def ensure_imported_blend_asset(
         elif parsed_view_distance is not None:
             dist_mm = float(parsed_view_distance)
 
+        # Optional apparent-size lock: keep the asset's angular size constant while changing distance.
+        # If appearance_distance_mm is provided, we scale the asset by (dist_mm / appearance_distance_mm).
+        sc2_eff = sc2
+        if dist_mm is not None and "appearance_distance_mm" in obj_cfg:
+            ref_d = float(obj_cfg.get("appearance_distance_mm", float(dist_mm)))
+            if ref_d <= 1e-6:
+                ref_d = 1e-6
+            k = float(dist_mm) / ref_d
+            sc2_eff = [float(sc2[0]) * k, float(sc2[1]) * k, float(sc2[2]) * k]
+        try:
+            root["appearance_distance_mm"] = float(
+                obj_cfg.get(
+                    "appearance_distance_mm",
+                    float(dist_mm) if dist_mm is not None else 0.0,
+                )
+            )
+        except Exception:
+            pass
+
         # Desired location (in *camera local space*) for the TARGET point on the poster ray/plane.
         if dist_mm is not None:
-            L_target = poster_ray_dir_cam([base_px, base_py], float(poster_plane_distance)) * float(dist_mm)
+            L_target = poster_ray_dir_cam(
+                [base_px, base_py], float(poster_plane_distance)
+            ) * float(dist_mm)
         else:
             # Legacy-style: z_mm offset from poster plane, optionally screen_locked.
             z_mm = float(obj_cfg.get("z_mm", 0.0))
@@ -2000,7 +2362,9 @@ def ensure_imported_blend_asset(
                     d_actual = 1e-6
                 f = d_actual / d_ref
 
-            L_target = Vector((base_px * f, base_py * f, -float(poster_plane_distance) + z_mm))
+            L_target = Vector(
+                (base_px * f, base_py * f, -float(poster_plane_distance) + z_mm)
+            )
 
         # Store on-poster layout info for optional overlap checking/debug boxes.
         try:
@@ -2026,14 +2390,16 @@ def ensure_imported_blend_asset(
         rot_deg = obj_cfg.get("rotation_deg", [0.0, 0.0, 0.0])
 
         # We compute a quaternion for anchoring even if we ultimately set Euler rotation.
-        q_final = Euler((0.0, 0.0, 0.0), 'XYZ').to_quaternion()
+        q_final = Euler((0.0, 0.0, 0.0), "XYZ").to_quaternion()
 
         if view_dir is not None:
             desired_cam_dir_asset = Vector(view_dir)
-            desired_up_asset = Vector(view_up) if view_up is not None else Vector((0.0, 0.0, 1.0))
+            desired_up_asset = (
+                Vector(view_up) if view_up is not None else Vector((0.0, 0.0, 1.0))
+            )
 
             # Direction from the TARGET point to the camera in camera-local space
-            actual_cam_dir_parent = (-L_target)
+            actual_cam_dir_parent = -L_target
             if actual_cam_dir_parent.length <= 1e-9:
                 actual_cam_dir_parent = Vector((0.0, 0.0, 1.0))
 
@@ -2046,30 +2412,62 @@ def ensure_imported_blend_asset(
             )
 
             # Optional extra local rotation (still supported, but try to prefer view.roll_deg)
-            q_off = Euler([math.radians(v) for v in rot_deg], 'XYZ').to_quaternion()
+            q_off = Euler([math.radians(v) for v in rot_deg], "XYZ").to_quaternion()
             q_final = q_view @ q_off
 
             try:
-                root.rotation_mode = 'QUATERNION'
+                root.rotation_mode = "QUATERNION"
                 root.rotation_quaternion = q_final
             except Exception:
-                root.rotation_euler = q_final.to_euler('XYZ')
+                root.rotation_euler = q_final.to_euler("XYZ")
         else:
             # No view: interpret rotation_deg as a camera-relative rotation.
             try:
-                root.rotation_mode = 'XYZ'
+                root.rotation_mode = "XYZ"
             except Exception:
                 pass
-            e = Euler([math.radians(v) for v in rot_deg], 'XYZ')
+            e = Euler([math.radians(v) for v in rot_deg], "XYZ")
             root.rotation_euler = e
             q_final = e.to_quaternion()
 
         # Anchor translation: place the asset so that TARGET point lands at L_target.
         # Must account for root scale (local point is scaled then rotated then translated).
-        target_scaled = Vector((target_asset.x * sc2[0], target_asset.y * sc2[1], target_asset.z * sc2[2]))
+        target_scaled = Vector(
+            (
+                target_asset.x * sc2_eff[0],
+                target_asset.y * sc2_eff[1],
+                target_asset.z * sc2_eff[2],
+            )
+        )
         root.location = L_target - (q_final @ target_scaled)
         # Scale
-        root.scale = Vector(sc2)
+        root.scale = Vector(sc2_eff)
+
+        # Optional depth diagnostics to debug unexpected front/back ordering.
+        if bool(obj_cfg.get("debug_depth", False)):
+            try:
+                # Anchor point in camera-local space (should equal L_target)
+                anchor_cam = root.location + (q_final @ target_scaled)
+                anchor_depth = -float(anchor_cam.z)
+                dr = _instancer_mesh_depth_range_cam_depsgraph(inst, cam_obj)
+                if dr is None:
+                    dr = _collection_mesh_depth_range_cam(
+                        coll,
+                        root_loc_cam=Vector(root.location),
+                        q_asset_to_cam=q_final,
+                        scale_xyz=sc2_eff,
+                    )
+                if dr is None:
+                    print(
+                        f"[depth] {name}: anchor_depth={anchor_depth:.1f}mm (no mesh bounds available)"
+                    )
+                else:
+                    dmin, dmax = dr
+                    print(
+                        f"[depth] {name}: anchor_depth={anchor_depth:.1f}mm, bbox_depth_range=[{dmin:.1f} .. {dmax:.1f}]mm"
+                    )
+            except Exception as e:
+                print(f"[depth] {name}: (failed) {e}")
 
     else:
         # WORLD space placement (default)
@@ -2098,6 +2496,7 @@ def ensure_imported_blend_asset(
 # Poster layout diagnostics (optional)
 # ----------------------------
 
+
 def _iter_layout_boxes_from_scene() -> List[Tuple[str, float, float, float, float]]:
     """Collect (name, cx, cy, w, h) for objects that expose poster_layout_* custom props."""
     out: List[Tuple[str, float, float, float, float]] = []
@@ -2117,14 +2516,18 @@ def _iter_layout_boxes_from_scene() -> List[Tuple[str, float, float, float, floa
     return out
 
 
-def _rect_from_center(cx: float, cy: float, w: float, h: float, *, pad: float = 0.0) -> Tuple[float, float, float, float]:
+def _rect_from_center(
+    cx: float, cy: float, w: float, h: float, *, pad: float = 0.0
+) -> Tuple[float, float, float, float]:
     p = float(pad)
     hw = float(w) * 0.5 + p
     hh = float(h) * 0.5 + p
     return (cx - hw, cx + hw, cy - hh, cy + hh)  # x0,x1,y0,y1
 
 
-def _overlap_area(r1: Tuple[float, float, float, float], r2: Tuple[float, float, float, float]) -> float:
+def _overlap_area(
+    r1: Tuple[float, float, float, float], r2: Tuple[float, float, float, float]
+) -> float:
     x0 = max(r1[0], r2[0])
     x1 = min(r1[1], r2[1])
     y0 = max(r1[2], r2[2])
@@ -2160,7 +2563,7 @@ def _ensure_layout_box_plane(
         obj = bpy.data.objects.new(obj_name, mesh)
         bpy.context.scene.collection.objects.link(obj)
 
-    obj.display_type = 'WIRE'
+    obj.display_type = "WIRE"
     obj.hide_render = True
     try:
         obj.show_in_front = True
@@ -2170,7 +2573,13 @@ def _ensure_layout_box_plane(
     w, h = float(size_mm[0]), float(size_mm[1])
     obj.scale = Vector((w, h, 1.0))
 
-    place_on_poster_plane(obj, cam_obj, float(poster_plane_distance), [float(center_xy_mm[0]), float(center_xy_mm[1])], float(z_mm))
+    place_on_poster_plane(
+        obj,
+        cam_obj,
+        float(poster_plane_distance),
+        [float(center_xy_mm[0]), float(center_xy_mm[1])],
+        float(z_mm),
+    )
     try:
         move_object_to_collection(obj, ensure_collection("HELPERS"))
     except Exception:
@@ -2208,14 +2617,16 @@ def run_layout_diagnostics(
         safe_h = max(1.0, float(poster_h_mm) - 2.0 * float(safe_margin_mm))
         safe = _rect_from_center(0.0, 0.0, safe_w, safe_h, pad=0.0)
 
-        for (n, cx, cy, w, h) in boxes:
+        for n, cx, cy, w, h in boxes:
             r = _rect_from_center(cx, cy, w, h, pad=pad)
             # Outside full poster
             if r[0] < -half_w or r[1] > half_w or r[2] < -half_h or r[3] > half_h:
                 print(f"[layout] WARN: '{n}' extends outside poster bounds")
             # Outside safe area
             if r[0] < safe[0] or r[1] > safe[1] or r[2] < safe[2] or r[3] > safe[3]:
-                print(f"[layout] WARN: '{n}' extends outside safe area (margin={safe_margin_mm}mm)")
+                print(
+                    f"[layout] WARN: '{n}' extends outside safe area (margin={safe_margin_mm}mm)"
+                )
 
         # Pairwise overlap checks
         for i in range(len(boxes)):
@@ -2226,11 +2637,13 @@ def run_layout_diagnostics(
                 r2 = _rect_from_center(x2, y2, w2, h2, pad=pad)
                 area = _overlap_area(r1, r2)
                 if area > 0.0:
-                    print(f"[layout] WARN: overlap '{n1}' vs '{n2}' (area≈{area:.1f} mm^2, pad={pad}mm)")
+                    print(
+                        f"[layout] WARN: overlap '{n1}' vs '{n2}' (area≈{area:.1f} mm^2, pad={pad}mm)"
+                    )
 
     if debug:
         _remove_objects_by_prefix("LAYOUTBOX_")
-        for (n, cx, cy, w, h) in boxes:
+        for n, cx, cy, w, h in boxes:
             _ensure_layout_box_plane(
                 n,
                 cam_obj=cam_obj,
@@ -2240,11 +2653,15 @@ def run_layout_diagnostics(
                 z_mm=float(layout.get("z_mm", 0.25)),
             )
 
+
 # ----------------------------
 # Main entrypoint
 # ----------------------------
 
-def apply_manifest(manifest_path: str | Path, *, ppi_override: Optional[float] = None) -> Dict[str, Any]:
+
+def apply_manifest(
+    manifest_path: str | Path, *, ppi_override: Optional[float] = None
+) -> Dict[str, Any]:
     cfg = load_manifest(manifest_path)
 
     if bool(cfg.get("scene", {}).get("remove_startup_objects", True)):

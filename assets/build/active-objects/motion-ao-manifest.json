@@ -27,11 +27,11 @@
         "blend": "assets/compiled/blend/pcb.blend",
         "blend_collection": "EXPORT_pcb_yaw_axis_ctrl",
         "location_mm": [
-          475.0,
+          550.0,
           100.0,
           0.0
         ],
-        "scale": 3.0,
+        "scale": 4.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -46,10 +46,10 @@
         "blend_collection": "EXPORT_joystick_yaw_axis_transducers",
         "location_mm": [
           200.0,
-          125.0,
+          100.0,
           0.0
         ],
-        "scale": 1.5,
+        "scale": 2.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -63,11 +63,11 @@
         "blend": "assets/compiled/blend/pcb.blend",
         "blend_collection": "EXPORT_pcb_pitch_axis_ctrl",
         "location_mm": [
-          175.0,
+          200.0,
           150.0,
           0.0
         ],
-        "scale": 3.0,
+        "scale": 4.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -81,11 +81,11 @@
         "blend": "assets/compiled/blend/joystick.blend",
         "blend_collection": "EXPORT_joystick_pitch_axis_transducers",
         "location_mm": [
-          50.0,
-          400.0,
-          -100.0
+          80.0,
+          460.0,
+          -150.0
         ],
-        "scale": 1.5,
+        "scale": 2.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -131,16 +131,22 @@
       "image_path": "assets/images/mouse-joystick-pcb-joystick-motor.png",
       "plane": "YZ"
     },
-    "center": {
-      "enabled": true,
-      "image_path": "assets/images/MotionAO.png",
-      "z_mm": 380.0,
-      "height_mm": 120.0,
-      "scale": 1.0,
-      "interpolation": "Cubic",
-      "flip_u": false,
-      "flip_v": false,
-      "auto_raise_above_walls": true
-    }
+    "free": [
+      {
+        "enabled": true,
+        "image_path": "assets/images/MotionAO.png",
+        "location_mm": [
+          225.0,
+          0.0,
+          375.0
+        ],
+        "height_mm": 175.0,
+        "scale": 1.0,
+        "flip_u": false,
+        "flip_v": false,
+        "interpolation": "Cubic",
+        "emission_strength": 1.0
+      }
+    ]
   }
 }

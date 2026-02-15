@@ -69,7 +69,7 @@
     "use_material_copies": true,
     "final_uses_original_materials": true,
     "ghost_hide_name_contains": [
-      "SCREW",
+      "Screw",
       "WASHER",
       "DOWEL",
       "BALL",

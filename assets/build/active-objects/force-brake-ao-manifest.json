@@ -27,11 +27,11 @@
         "blend": "assets/compiled/blend/pcb.blend",
         "blend_collection": "EXPORT_pcb_torque_sensor",
         "location_mm": [
-          350.0,
-          25.0,
+          425.0,
+          0.0,
           0.0
         ],
-        "scale": 3.0,
+        "scale": 4.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -45,11 +45,11 @@
         "blend": "assets/compiled/blend/joystick.blend",
         "blend_collection": "EXPORT_joystick_torque_sensor",
         "location_mm": [
-          125.0,
+          100.0,
           200.0,
-          -100.0
+          -150.0
         ],
-        "scale": 1.5,
+        "scale": 2.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -64,10 +64,10 @@
         "blend_collection": "EXPORT_pcb_brake",
         "location_mm": [
           75.0,
-          150.0,
+          125.0,
           0.0
         ],
-        "scale": 3.0,
+        "scale": 4.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -82,10 +82,10 @@
         "blend_collection": "EXPORT_joystick_brake",
         "location_mm": [
           110.0,
-          400.0,
-          150.0
+          425.0,
+          180.0
         ],
-        "scale": 1.5,
+        "scale": 2.0,
         "rotation_deg": [
           135.0,
           0.0,
@@ -131,16 +131,22 @@
       "image_path": "assets/images/mouse-joystick-pcb-brake.png",
       "plane": "YZ"
     },
-    "center": {
-      "enabled": true,
-      "image_path": "assets/images/ForceBrakeAO.png",
-      "z_mm": 380.0,
-      "height_mm": 120.0,
-      "scale": 1.0,
-      "interpolation": "Cubic",
-      "flip_u": false,
-      "flip_v": false,
-      "auto_raise_above_walls": true
-    }
+    "free": [
+      {
+        "enabled": true,
+        "image_path": "assets/images/ForceBrakeAO.png",
+        "location_mm": [
+          225.0,
+          0.0,
+          375.0
+        ],
+        "height_mm": 175.0,
+        "scale": 1.0,
+        "flip_u": false,
+        "flip_v": false,
+        "interpolation": "Cubic",
+        "emission_strength": 1.0
+      }
+    ]
   }
 }

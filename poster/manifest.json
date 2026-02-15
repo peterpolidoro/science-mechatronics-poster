@@ -231,14 +231,14 @@
       "space": "POSTER",
       "image_path": "../assets/images/programmable-instrument.png",
       "size_mm": [
-        300.0,
-        200.0
+        257.6,
+        171.7
       ],
       "poster_xy_mm": [
-        0.0,
-        250.0
+        450.0,
+        -100.0
       ],
-      "z_mm": 2400.0,
+      "z_mm": 100.0,
       "screen_lock": true,
       "emission_strength": 1.0
     },
@@ -253,10 +253,46 @@
         360.0
       ],
       "poster_xy_mm": [
-        444.2,
-        176.9
+        450.0,
+        180.0
       ],
-      "z_mm": 2400.0,
+      "z_mm": 100.0,
+      "screen_lock": true,
+      "emission_strength": 1.0
+    },
+    {
+      "name": "qp",
+      "kind": "image_plane",
+      "collection": "OVERLAY",
+      "space": "POSTER",
+      "image_path": "../assets/images/qp.png",
+      "size_mm": [
+        411.8,
+        360.0
+      ],
+      "poster_xy_mm": [
+        110.0,
+        190.0
+      ],
+      "z_mm": 100.0,
+      "screen_lock": true,
+      "emission_strength": 1.0
+    },
+    {
+      "name": "single-trial-sequence",
+      "kind": "image_plane",
+      "collection": "OVERLAY",
+      "space": "POSTER",
+      "image_path": "../assets/images/single-trial-sequence.png",
+      "size_mm": [
+        490.9,
+        300.0
+      ],
+      "poster_xy_mm": [
+        -350.0,
+        -375.0
+      ],
+      "z_mm": 100.0,
       "screen_lock": true,
       "emission_strength": 1.0
     },
@@ -266,12 +302,16 @@
       "collection": "WORLD",
       "filepath": "../assets/compiled/blend/joystick.blend",
       "blend_collection": "EXPORT_joystick",
+      "instance_export_wrapper": true,
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        100,
+        175,
         -250
       ],
+      "distance_mm": 2000,
+      "appearance_distance_mm": 2000,
+      "debug_depth": true,
       "view": {
         "camera_dir": [
           1,
@@ -289,6 +329,38 @@
       ]
     },
     {
+      "name": "pcb",
+      "kind": "import_blend",
+      "collection": "WORLD",
+      "filepath": "../assets/compiled/blend/pcb.blend",
+      "blend_collection": "SRC_pcb",
+      "instance_export_wrapper": true,
+      "link": true,
+      "space": "POSTER",
+      "poster_xy_mm": [
+        425.0,
+        -400.0
+      ],
+      "distance_mm": 2000,
+      "appearance_distance_mm": 2000,
+      "view": {
+        "camera_dir": [
+          -0.015,
+          -0.5,
+          1
+        ],
+        "camera_distance_mm": 2000,
+        "target_z_mm": 0,
+        "roll_deg": 0
+      },
+      "scale": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "import_scale": 1.0
+    },
+    {
       "name": "motion-ao",
       "kind": "import_blend",
       "collection": "WORLD",
@@ -297,9 +369,11 @@
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        -475,
-        -275
+        -460,
+        -100
       ],
+      "distance_mm": 2000,
+      "appearance_distance_mm": 2000,
       "view": {
         "camera_dir": [
           1,
@@ -311,9 +385,9 @@
         "roll_deg": 0
       },
       "scale": [
-        0.25,
-        0.25,
-        0.25
+        0.3,
+        0.3,
+        0.3
       ]
     },
     {
@@ -325,9 +399,12 @@
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        -240,
-        -275
+        -175,
+        -100
       ],
+      "distance_mm": 6000,
+      "appearance_distance_mm": 2000,
+      "debug_depth": true,
       "view": {
         "camera_dir": [
           1,
@@ -339,35 +416,40 @@
         "roll_deg": 0
       },
       "scale": [
-        0.25,
-        0.25,
-        0.25
+        0.3,
+        0.3,
+        0.3
       ]
     },
     {
-      "name": "pcb",
+      "name": "animal-feedback-ao",
       "kind": "import_blend",
       "collection": "WORLD",
-      "filepath": "../assets/compiled/blend/pcb.blend",
-      "blend_collection": "SRC_pcb",
+      "filepath": "../assets/compiled/blend/animal-feedback-ao.blend",
+      "blend_collection": "EXPORT_animal_feedback_ao",
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        -450.0,
-        -450.0
+        -175,
+        125
       ],
-      "distance_mm": 2000.0,
-      "rotation_deg": [
-        0.0,
-        0.0,
-        0.0
-      ],
+      "distance_mm": 2000,
+      "appearance_distance_mm": 2000,
+      "view": {
+        "camera_dir": [
+          1,
+          1,
+          1
+        ],
+        "camera_distance_mm": 2000,
+        "target_z_mm": 0,
+        "roll_deg": 0
+      },
       "scale": [
-        1.5,
-        1.5,
-        1.5
-      ],
-      "import_scale": 1.0
+        0.3,
+        0.3,
+        0.3
+      ]
     }
   ]
 }

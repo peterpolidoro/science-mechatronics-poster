@@ -409,11 +409,10 @@ def _make_corner_plane_mesh(
     plane_u = str(plane).upper()
     if plane_u == "XZ":
         # XZ plane at y=0. Anchor corner at origin, grow into +X and +Z.
-        # Front face must point toward +Y (toward the isometric camera at +[1,1,1]).
-        # Use CCW vertex order as seen from +Y.
-        verts = [(0.0, 0.0, 0.0), (0.0, 0.0, h), (w, 0.0, h), (w, 0.0, 0.0)]
-        faces = [(0, 1, 2, 3)]  # normal +Y
-        # UVs match vertex order above: origin->(0,0), +Z->(0,1), +X+Z->(1,1), +X->(1,0)
+        # IMPORTANT: Front face must point toward +Y (toward the isometric camera at +[1,1,1]).
+        verts = [(0.0, 0.0, 0.0), (w, 0.0, 0.0), (w, 0.0, h), (0.0, 0.0, h)]
+        faces = [(0, 3, 2, 1)]  # flips the face normal to +Y
+        # UVs correspond to vertex order in `faces`
         uvs = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]
     elif plane_u == "YZ":
         # YZ plane at x=0. Anchor corner at origin, grow into +Y and +Z.
@@ -750,6 +749,124 @@ def create_center_schematic_plane(
         pass
 
     return obj
+
+
+
+def create_billboard_image_plane(
+    name: str,
+    *,
+    image_path: str,
+    location_mm: Sequence[float],
+    camera_direction: Any,
+    height_mm: float,
+    width_mm: Optional[float],
+    scale: float,
+    emission_strength: float,
+    interpolation: str,
+    flip_u: bool,
+    flip_v: bool,
+    parent_obj: Optional[bpy.types.Object],
+    target_collection: bpy.types.Collection,
+) -> Optional[bpy.types.Object]:
+    """Create a billboard-style image plane at an arbitrary location.
+
+    - The plane is *parallel to the camera plane* (same orientation logic as the center image).
+    - The plane is rotated so its top/bottom edges are parallel to the camera's top/bottom edges,
+      assuming the camera has world +Z as its 'up' direction (or as-close-as-possible by projection).
+
+    The image plane is centered at `location_mm` (in millimeters, since 1 BU = 1 mm in this project).
+    """
+    if not image_path:
+        warn(f"{name}: no image_path; skipping")
+        return None
+    if not os.path.exists(image_path):
+        warn(f"{name}: image not found: {image_path}")
+        return None
+
+    try:
+        img = bpy.data.images.load(image_path, check_existing=True)
+    except Exception as e:
+        warn(f"{name}: failed to load image {image_path}: {e!r}")
+        return None
+
+    px_w = float(getattr(img, "size", [0, 0])[0] or 0)
+    px_h = float(getattr(img, "size", [0, 0])[1] or 0)
+    if px_w <= 0 or px_h <= 0:
+        px_w, px_h = 1.0, 1.0
+
+    h_mm = float(height_mm) * float(scale)
+    if width_mm is not None:
+        w_mm = float(width_mm) * float(scale)
+    else:
+        aspect = px_w / px_h
+        w_mm = h_mm * aspect
+
+    mesh = _make_center_plane_mesh(
+        name + "_MESH",
+        width_mm=w_mm,
+        height_mm=h_mm,
+        flip_u=bool(flip_u),
+        flip_v=bool(flip_v),
+    )
+
+    obj = bpy.data.objects.get(name)
+    if obj is None:
+        obj = bpy.data.objects.new(name, mesh)
+        try:
+            target_collection.objects.link(obj)
+        except Exception:
+            bpy.context.scene.collection.objects.link(obj)
+    else:
+        obj.data = mesh
+
+    move_object_to_collection(obj, target_collection)
+
+    # Parent first (so setting matrix_world computes correct local matrix)
+    if parent_obj is not None:
+        parent_keep_local(obj, parent_obj)
+
+    # Orient to camera plane and place at arbitrary XYZ
+    x_axis, y_axis, n_axis = _camera_plane_basis(camera_direction)
+    rot3 = Matrix((x_axis, y_axis, n_axis)).transposed()
+    loc = Vector((float(location_mm[0]), float(location_mm[1]), float(location_mm[2])))
+    world = Matrix.Translation(loc) @ rot3.to_4x4()
+    try:
+        obj.matrix_world = world
+    except Exception:
+        obj.location = loc
+        try:
+            obj.rotation_euler = rot3.to_euler()
+        except Exception:
+            pass
+
+    mat = ensure_material_image_emission(
+        "MAT_" + name,
+        image_path,
+        emission_strength=float(emission_strength),
+        interpolation=str(interpolation),
+    )
+    if obj.data.materials:
+        obj.data.materials[0] = mat
+    else:
+        obj.data.materials.append(mat)
+
+    # Make it "graphic" (not participating in lighting)
+    try:
+        obj.visible_shadow = False
+    except Exception:
+        pass
+    try:
+        obj.cycles_visibility.camera = True
+        obj.cycles_visibility.diffuse = False
+        obj.cycles_visibility.glossy = False
+        obj.cycles_visibility.transmission = False
+        obj.cycles_visibility.shadow = False
+        obj.cycles_visibility.scatter = False
+    except Exception:
+        pass
+
+    return obj
+
 
 # External .blend collection import (robust)
 # ----------------------------
@@ -1358,7 +1475,12 @@ def build_scene(
     # ----------------
     # Schematics
     # ----------------
-    schem_cfg = cfg.get("images", None) if isinstance(cfg.get("images", None), dict) else (cfg.get("schematics", {}) if isinstance(cfg.get("schematics", {}), dict) else {})
+    schem_cfg = cfg.get("images", {}) if isinstance(cfg.get("images", {}), dict) else {}
+    if not schem_cfg:
+        _legacy_schem = cfg.get("schematics", {}) if isinstance(cfg.get("schematics", {}), dict) else {}
+        if _legacy_schem:
+            schem_cfg = _legacy_schem
+            warn("Using legacy manifest key 'schematics'; please rename it to 'images'.")
     schem_defaults = schem_cfg.get("defaults", {}) if isinstance(schem_cfg.get("defaults", {}), dict) else {}
 
     # Track the tallest wall schematic so we can place images.center above it
@@ -1529,6 +1651,136 @@ def build_scene(
                 )
 
 
+
+    # ----------------
+    # Free images (billboards parallel to the camera plane)
+    # ----------------
+    free_raw = schem_cfg.get("free", None) if isinstance(schem_cfg, dict) else None
+    free_items: List[Dict[str, Any]] = []
+    if isinstance(free_raw, list):
+        # images.free: [ {spec}, {spec}, ... ]
+        free_items = [it for it in free_raw if isinstance(it, dict)]
+    elif isinstance(free_raw, dict):
+        # images.free can be either:
+        #   A) a single spec dict: { "enabled": true, "image_path": "...", "location_mm": [...], ... }
+        #   B) a dict-of-dicts:   { "labelA": {spec...}, "labelB": {spec...} }
+        looks_like_single_spec = any(
+            k in free_raw for k in (
+                "image_path",
+                "png",
+                "image",
+                "location_mm",
+                "loc_mm",
+                "xyz_mm",
+                "x_mm",
+                "y_mm",
+                "z_mm",
+                "height_mm",
+                "width_mm",
+                "size_mm",
+                "scale",
+                "emission_strength",
+                "interpolation",
+                "flip_u",
+                "flip_v",
+            )
+        )
+        if looks_like_single_spec:
+            free_items = [dict(free_raw)]
+        else:
+            for k, v in free_raw.items():
+                if isinstance(v, dict):
+                    it = dict(v)
+                    it.setdefault("name", str(k))
+                    free_items.append(it)
+
+    if free_items:
+        prev = cfg.get("preview_camera", {}) if isinstance(cfg.get("preview_camera", {}), dict) else {}
+        default_cam_dir = prev.get("direction", [1.0, 1.0, 1.0])
+    
+        for i, spec_f in enumerate(free_items):
+            merged_f = merged_dict(schem_defaults, spec_f)
+    
+            if not merged_f.get("enabled", True):
+                info(f"images.free[{i}]: disabled")
+                continue
+    
+            img_rel_f = merged_f.get("image_path") or merged_f.get("png") or merged_f.get("image")
+            if not img_rel_f:
+                warn(f"images.free[{i}]: missing image_path")
+                continue
+            img_abs_f = abspath_from_manifest(manifest_path, str(img_rel_f))
+    
+            # Location: [x,y,z] in mm (image center)
+            loc = merged_f.get("location_mm", merged_f.get("loc_mm", merged_f.get("xyz_mm", None)))
+            if not (isinstance(loc, (list, tuple)) and len(loc) == 3):
+                def _fnum(x: Any, d: float = 0.0) -> float:
+                    try:
+                        return float(x)
+                    except Exception:
+                        return float(d)
+    
+                loc = [
+                    _fnum(merged_f.get("x_mm", merged_f.get("x", 0.0))),
+                    _fnum(merged_f.get("y_mm", merged_f.get("y", 0.0))),
+                    _fnum(merged_f.get("z_mm", merged_f.get("z", 0.0))),
+                ]
+    
+            # Size
+            size_mm_f = merged_f.get("size_mm", None)
+            width_mm_f: Optional[float] = None
+    
+            # If not provided, default to ~30% of the wall height (or fall back to defaults.height_mm).
+            default_h_f = None
+            try:
+                if wall_max_z_mm > 1e-6:
+                    default_h_f = 0.30 * wall_max_z_mm
+            except Exception:
+                default_h_f = None
+            if default_h_f is None:
+                default_h_f = float(schem_defaults.get("height_mm", 300.0) if isinstance(schem_defaults, dict) else 300.0)
+    
+            height_mm_f: float = float(merged_f.get("height_mm", default_h_f))
+    
+            if isinstance(size_mm_f, (list, tuple)) and len(size_mm_f) == 2:
+                width_mm_f = float(size_mm_f[0])
+                height_mm_f = float(size_mm_f[1])
+            else:
+                if "width_mm" in merged_f:
+                    try:
+                        width_mm_f = float(merged_f.get("width_mm"))
+                    except Exception:
+                        width_mm_f = None
+    
+            cam_dir_f = merged_f.get("camera_direction", merged_f.get("cam_dir", None))
+            if cam_dir_f is None:
+                cam_dir_f = default_cam_dir
+    
+            raw_name = merged_f.get("name", None)
+            if raw_name:
+                slug = re.sub(r"[^A-Za-z0-9_]+", "_", str(raw_name)).strip("_")
+                obj_name = f"IMG_FREE_{slug}" if slug else f"IMG_FREE_{i:02d}"
+            else:
+                obj_name = f"IMG_FREE_{i:02d}"
+    
+            create_billboard_image_plane(
+                obj_name,
+                image_path=img_abs_f,
+                location_mm=loc,
+                camera_direction=cam_dir_f,
+                height_mm=height_mm_f,
+                width_mm=width_mm_f,
+                scale=float(merged_f.get("scale", 1.0)),
+                emission_strength=float(merged_f.get("emission_strength", 1.0)),
+                interpolation=str(merged_f.get("interpolation", "Cubic")),
+                flip_u=bool(merged_f.get("flip_u", False)),
+                flip_v=bool(merged_f.get("flip_v", False)),
+                parent_obj=rig_root,
+                target_collection=schem_subcol,
+            )
+    
+    
+    
     # ----------------
     # Components
     # ----------------
