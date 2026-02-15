@@ -27,11 +27,11 @@
         "blend": "assets/compiled/blend/pcb.blend",
         "blend_collection": "EXPORT_pcb_audio",
         "location_mm": [
-          225.0,
-          50.0,
+          220.0,
+          10.0,
           0.0
         ],
-        "scale": 3.0,
+        "scale": 4.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -49,7 +49,7 @@
           200.0,
           -100.0
         ],
-        "scale": 1.5,
+        "scale": 2.0,
         "rotation_deg": [
           0.0,
           0.0,
@@ -63,8 +63,8 @@
         "blend": "",
         "blend_collection": "",
         "location_mm": [
+          70.0,
           75.0,
-          150.0,
           0.0
         ],
         "scale": 3.0,
@@ -131,16 +131,22 @@
       "image_path": "",
       "plane": "YZ"
     },
-    "center": {
-      "enabled": true,
-      "image_path": "assets/images/AnimalFeedbackAO.png",
-      "z_mm": 380.0,
-      "height_mm": 120.0,
-      "scale": 1.0,
-      "interpolation": "Cubic",
-      "flip_u": false,
-      "flip_v": false,
-      "auto_raise_above_walls": true
-    }
+    "free": [
+      {
+        "enabled": true,
+        "image_path": "assets/images/AnimalFeedbackAO.png",
+        "location_mm": [
+          225.0,
+          0.0,
+          375.0
+        ],
+        "height_mm": 175.0,
+        "scale": 1.0,
+        "flip_u": false,
+        "flip_v": false,
+        "interpolation": "Cubic",
+        "emission_strength": 1.0
+      }
+    ]
   }
 }
