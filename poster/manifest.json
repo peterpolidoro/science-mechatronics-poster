@@ -24,7 +24,7 @@
     "exposure": 0.0,
     "gamma": 1.0,
     "film_transparent": false,
-    "color_mode": "RGBA",
+    "color_mode": "RGB",
     "color_depth": "16",
     "file_format": "PNG"
   },
@@ -236,7 +236,25 @@
       ],
       "poster_xy_mm": [
         450.0,
-        -100.0
+        -90.0
+      ],
+      "z_mm": 100.0,
+      "screen_lock": true,
+      "emission_strength": 1.0
+    },
+    {
+      "name": "end-to-end",
+      "kind": "image_plane",
+      "collection": "OVERLAY",
+      "space": "POSTER",
+      "image_path": "../assets/images/end-to-end.png",
+      "size_mm": [
+        257.6,
+        76.2
+      ],
+      "poster_xy_mm": [
+        450.0,
+        -225.0
       ],
       "z_mm": 100.0,
       "screen_lock": true,
@@ -254,7 +272,7 @@
       ],
       "poster_xy_mm": [
         450.0,
-        180.0
+        190.0
       ],
       "z_mm": 100.0,
       "screen_lock": true,
@@ -285,11 +303,11 @@
       "space": "POSTER",
       "image_path": "../assets/images/single-trial-sequence.png",
       "size_mm": [
-        425.0,
-        275.0
+        400.0,
+        244.5
       ],
       "poster_xy_mm": [
-        -380.0,
+        -410.0,
         -375.0
       ],
       "z_mm": 100.0,
@@ -308,7 +326,25 @@
       ],
       "poster_xy_mm": [
         -125.0,
-        -350.0
+        -325.0
+      ],
+      "z_mm": 150.0,
+      "screen_lock": true,
+      "emission_strength": 1.0
+    },
+    {
+      "name": "mbm",
+      "kind": "image_plane",
+      "collection": "OVERLAY",
+      "space": "POSTER",
+      "image_path": "../assets/images/mbm.png",
+      "size_mm": [
+        187.5,
+        125.0
+      ],
+      "poster_xy_mm": [
+        -125.0,
+        -460.0
       ],
       "z_mm": 150.0,
       "screen_lock": true,
@@ -324,7 +360,7 @@
       "link": true,
       "space": "POSTER",
       "poster_xy_mm": [
-        175,
+        160,
         -250
       ],
       "distance_mm": 2000,
@@ -388,7 +424,7 @@
       "space": "POSTER",
       "poster_xy_mm": [
         -440,
-        -100
+        -110
       ],
       "distance_mm": 2000,
       "appearance_distance_mm": 2000,
@@ -418,7 +454,7 @@
       "space": "POSTER",
       "poster_xy_mm": [
         -100,
-        -100
+        -110
       ],
       "distance_mm": 6000,
       "appearance_distance_mm": 2000,
